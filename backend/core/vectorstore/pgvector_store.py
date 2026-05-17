@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS document_embeddings (
 CREATE INDEX IF NOT EXISTS idx_embeddings_collection ON document_embeddings(collection_id);
 CREATE INDEX IF NOT EXISTS idx_embeddings_document ON document_embeddings(document_id);
 CREATE INDEX IF NOT EXISTS idx_embeddings_vector ON document_embeddings
-    USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+    USING ivfflat (embedding vector_cosine_ops) WITH (lists = 1);
 CREATE INDEX IF NOT EXISTS idx_embeddings_tsv ON document_embeddings USING gin(content_tsv);
 """.format(dimension=EMBEDDING_DIMENSION)
 
