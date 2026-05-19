@@ -60,7 +60,7 @@ export function CollectionList({
       ))}
       <button
         onClick={onCreateCollection}
-        className="flex h-48 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border text-muted-foreground transition-colors hover:border-primary/30 hover:bg-accent hover:text-foreground"
+        className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border/50 text-muted-foreground transition-colors hover:border-primary/30 hover:bg-accent hover:text-foreground"
       >
         <Plus className="h-6 w-6" />
         <span className="text-sm font-medium">Create new collection</span>

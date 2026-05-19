@@ -82,14 +82,14 @@ export function DocumentUpload({ collectionId }: DocumentUploadProps) {
   const uploads = useDocumentStore((s) => s.uploads);
   const removeUpload = useDocumentStore((s) => s.removeUpload);
 
-  const validateFiles = (files: FileList | File[]): File[] => {
+  function handleFiles(files: FileList | File[]) {
     const valid: File[] = [];
     setValidationError(null);
 
     const fileArray = Array.from(files);
     if (fileArray.length > MAX_FILES) {
       setValidationError(`Maximum ${MAX_FILES} files at once.`);
-      return [];
+      return;
     }
 
     for (const file of fileArray) {
@@ -106,47 +106,33 @@ export function DocumentUpload({ collectionId }: DocumentUploadProps) {
       valid.push(file);
     }
 
-    return valid;
-  };
+    if (valid.length > 0) {
+      uploadDocument.mutate(valid);
+    }
+  }
 
-  const handleFiles = useCallback(
-    (files: FileList | File[]) => {
-      const valid = validateFiles(files);
-      if (valid.length > 0) {
-        uploadDocument.mutate(valid);
-      }
-    },
-    [uploadDocument],
-  );
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragOver(false);
-      handleFiles(e.dataTransfer.files);
-    },
-    [handleFiles],
-  );
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
+  function handleDrop(e: React.DragEvent) {
     e.preventDefault();
     setIsDragOver(false);
-  }, []);
+    handleFiles(e.dataTransfer.files);
+  }
 
-  const handleFileInput = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.files) {
-        handleFiles(e.target.files);
-      }
-      e.target.value = "";
-    },
-    [handleFiles],
-  );
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragOver(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragOver(false);
+  }
+
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.files) {
+      handleFiles(e.target.files);
+    }
+    e.target.value = "";
+  }
 
   const activeUploads = Array.from(uploads.values());
   const uploading = activeUploads.filter((u) => u.status === "uploading").length;
@@ -177,13 +163,9 @@ export function DocumentUpload({ collectionId }: DocumentUploadProps) {
           Supports PDF &middot; max 50MB per file &middot; up to {MAX_FILES}{" "}
           files at once
         </p>
-        <label className="cursor-pointer">
-          <Button variant="outline" size="sm" asChild>
-            <span>
-              <FileUp className="mr-1.5 h-3.5 w-3.5" />
-              Browse Files
-            </span>
-          </Button>
+        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent">
+          <FileUp className="h-3.5 w-3.5" />
+          Browse Files
           <input
             type="file"
             accept=".pdf,application/pdf"

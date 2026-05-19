@@ -49,7 +49,7 @@ export function MessageList() {
   }
 
   return (
-    <ScrollArea className="flex-1">
+    <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="mx-auto max-w-3xl space-y-6 p-4 pb-6">
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
@@ -77,6 +77,6 @@ export function MessageList() {
 
         <div ref={bottomRef} />
       </div>
-    </ScrollArea>
+    </div>
   );
 }

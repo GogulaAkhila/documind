@@ -11,8 +11,13 @@ export function QueryProvider({ children }: QueryProviderProps) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 30_000,
-            retry: 2,
+            staleTime: 60_000,
+            retry: (failureCount, error: any) => {
+              if (error?.response?.status === 429) return failureCount < 3;
+              return failureCount < 1;
+            },
+            retryDelay: (attemptIndex) =>
+              Math.min(1000 * 2 ** attemptIndex, 10_000),
             refetchOnWindowFocus: false,
           },
           mutations: {

@@ -8,7 +8,6 @@ import {
   Trash2,
   Pencil,
 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -62,9 +61,8 @@ export function CollectionCard({ collection, onDelete }: CollectionCardProps) {
 
   return (
     <>
-    <Link to={`/collections/${collection.id}`} className="group block">
-      <Card className="h-full transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-0.5 hover:border-primary/20">
-        <CardContent className="flex h-full flex-col p-5">
+      <Link to={`/collections/${collection.id}`} className="group block">
+        <div className="flex h-full flex-col rounded-xl bg-card p-5 transition-all duration-200 hover:bg-accent hover:-translate-y-0.5">
           <div className="mb-4 flex items-start justify-between">
             <div
               className={`flex h-10 w-10 items-center justify-center rounded-xl ${theme.bg}`}
@@ -82,7 +80,10 @@ export function CollectionCard({ collection, onDelete }: CollectionCardProps) {
                   <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" onClick={(e) => e.preventDefault()}>
+              <DropdownMenuContent
+                align="end"
+                onClick={(e) => e.preventDefault()}
+              >
                 <DropdownMenuItem disabled>
                   <Pencil className="mr-2 h-3.5 w-3.5" />
                   Edit
@@ -123,19 +124,18 @@ export function CollectionCard({ collection, onDelete }: CollectionCardProps) {
             </div>
             <span>{timeAgo(collection.created_at)}</span>
           </div>
-        </CardContent>
-      </Card>
-    </Link>
+        </div>
+      </Link>
 
-    <ConfirmDialog
-      open={confirmDelete}
-      onOpenChange={setConfirmDelete}
-      title="Delete collection"
-      description={`This will permanently delete "${collection.name}" and all its documents and chats. This action cannot be undone.`}
-      confirmLabel="Delete"
-      destructive
-      onConfirm={() => onDelete(collection.id)}
-    />
+      <ConfirmDialog
+        open={confirmDelete}
+        onOpenChange={setConfirmDelete}
+        title="Delete collection"
+        description={`This will permanently delete "${collection.name}" and all its documents and chats. This action cannot be undone.`}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={() => onDelete(collection.id)}
+      />
     </>
   );
 }

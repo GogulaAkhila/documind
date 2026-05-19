@@ -1,5 +1,5 @@
 import { useLocation, Link } from "react-router-dom";
-import { Menu, Moon, Sun, Monitor, ChevronRight } from "lucide-react";
+import { Menu, Moon, Sun, Monitor, ChevronRight, FileText, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -20,7 +20,7 @@ function Breadcrumbs() {
 
   const { data: collection } = useCollection(collectionId ?? "");
 
-  const crumbs: { label: string; to: string }[] = [{ label: "Home", to: "/" }];
+  const crumbs: { label: string; to: string }[] = [];
 
   if (collectionId && collection) {
     crumbs.push({
@@ -42,6 +42,8 @@ function Breadcrumbs() {
       to: location.pathname,
     });
   }
+
+  if (crumbs.length === 0) return null;
 
   return (
     <nav className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -80,6 +82,15 @@ export function Header() {
         <Menu className="h-4 w-4" />
       </Button>
 
+      <Link to="/" className="flex items-center gap-2 mr-2">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary">
+          <FileText className="h-3.5 w-3.5 text-primary-foreground" />
+        </div>
+        <span className="text-base font-semibold tracking-tight">DocuMind</span>
+      </Link>
+
+      <div className="h-5 w-px bg-border" />
+
       <Breadcrumbs />
 
       <div className="ml-auto flex items-center gap-2">
@@ -113,7 +124,7 @@ export function Header() {
 
         <Avatar className="h-8 w-8">
           <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary">
-            AG
+            <User className="h-4 w-4" />
           </AvatarFallback>
         </Avatar>
       </div>
