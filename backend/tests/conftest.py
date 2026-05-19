@@ -69,3 +69,14 @@ def sample_pages() -> dict[int, str]:
         4: "Results\nOn the WMT 2014 English-to-German translation task, the big transformer model outperforms all previously reported ensembles.",
         5: "Conclusion\nIn this work, we presented the Transformer, the first sequence transduction model based entirely on attention.",
     }
+
+
+@pytest.fixture
+def enterprise_document_text():
+    return [
+        ("purpose", "This document describes the standard operating procedure for onboarding new employees at Acme Corp."),
+        ("scope", "This SOP applies to all departments and covers the complete onboarding workflow from offer acceptance to first day."),
+        ("procedure", "Step 1: HR sends welcome email within 24 hours of offer acceptance. Step 2: IT provisions laptop, email, and VPN access. Step 3: Manager schedules first-week orientation meetings."),
+        ("requirements", "New hires must complete the following before their start date: background check, NDA signing, and tax form submission."),
+        ("troubleshooting", "If VPN access is not working, verify that the employee's Active Directory account has been activated by IT."),
+    ]

@@ -15,11 +15,11 @@ class TestCollectionViewSet:
     def test_create_collection(self, api_client: APIClient):
         response = api_client.post(
             "/api/v1/documents/collections/",
-            {"name": "ML Papers", "description": "Machine learning research"},
+            {"name": "Engineering Docs", "description": "Engineering documentation"},
             format="json",
         )
         assert response.status_code == status.HTTP_201_CREATED
-        assert response.data["name"] == "ML Papers"
+        assert response.data["name"] == "Engineering Docs"
         assert "id" in response.data
 
     def test_list_collections(self, api_client: APIClient, collection: Collection):
@@ -60,7 +60,7 @@ class TestDocumentViewSet:
     def test_upload_document(self, mock_task, api_client: APIClient, collection: Collection):
         pdf_content = b"%PDF-1.4 fake pdf content"
         uploaded_file = SimpleUploadedFile(
-            "paper.pdf", pdf_content, content_type="application/pdf"
+            "document.pdf", pdf_content, content_type="application/pdf"
         )
         response = api_client.post(
             "/api/v1/documents/files/",

@@ -1,6 +1,6 @@
-# DocuMind — Production-Grade RAG System for Research Papers
+# DocuMind — Production-Grade RAG System for Document Intelligence
 
-A full-stack Retrieval-Augmented Generation pipeline enabling cross-document Q&A over research papers with inline citations, hybrid retrieval, and evaluation metrics.
+A full-stack Retrieval-Augmented Generation pipeline enabling cross-document Q&A over any PDF documents with inline citations, hybrid retrieval, and evaluation metrics.
 
 ## Architecture
 
@@ -49,7 +49,7 @@ A full-stack Retrieval-Augmented Generation pipeline enabling cross-document Q&A
 | **Embeddings** | Google Gemini Embedding 001 (768 dims) with sentence-transformers fallback |
 | **Vector DB** | Supabase PostgreSQL + pgvector (IVFFlat index) |
 | **Re-ranker** | Jina Reranker v2 |
-| **PDF Parsing** | PyMuPDF (fitz) |
+| **PDF Parsing** | PyMuPDF (fitz) — handles any PDF document type (research papers, SOPs, manuals, reports) |
 | **Evaluation** | RAGAS (faithfulness, relevance, context precision) |
 | **Task Queue** | Celery + Redis (Upstash) |
 | **Observability** | Sentry, LangSmith (optional) |
@@ -57,14 +57,15 @@ A full-stack Retrieval-Augmented Generation pipeline enabling cross-document Q&A
 
 ## Key Features
 
-- **Semantic Chunking** — Splits papers by section (Abstract, Methods, Results) rather than arbitrary token counts
+- **Semantic Chunking** — Splits documents by detected sections (academic, enterprise, technical) rather than arbitrary token counts
 - **Hybrid Retrieval** — Dense vector search (pgvector cosine similarity) + PostgreSQL full-text search (tsvector) with reciprocal rank fusion
 - **Re-ranking** — Jina Reranker v2 narrows top 20 → top 5 most relevant passages
-- **Inline Citations** — Every answer cites `[Paper Title, Page X]` with references
+- **Inline Citations** — Every answer cites `[Document Title, Page X]` with references
 - **Multi-Query Expansion** — User question → 3 reformulated queries via Gemini → merged retrieval for better recall
 - **Hallucination Guardrail** — Post-generation verification that claims are grounded in retrieved context
 - **Evaluation Dashboard** — RAGAS metrics (faithfulness, answer relevance, context precision)
 - **Embedding Fallback** — Automatically falls back to local sentence-transformers model if Gemini API is unavailable
+- **Any Document Type** — Supports research papers, technical documentation, SOPs, HR handbooks, compliance manuals, and any PDF-based content
 
 ## Getting Started
 
@@ -230,7 +231,7 @@ curl -X POST http://localhost:8000/api/v1/chat/messages/ \
   "session": "session-uuid",
   "role": "assistant",
   "content": "The Transformer is a model architecture eschewing recurrence and instead relying entirely on an attention mechanism [Attention Is All You Need, Page 2]...",
-  "sources": [{"paper_title": "...", "page_number": 2, "section_type": "abstract"}],
+  "sources": [{"document_title": "...", "page_number": 2, "section_type": "abstract"}],
   "created_at": "2026-05-17T..."
 }
 ```
@@ -258,7 +259,7 @@ Jina Reranker v2 (top 20 → top 5)
      │
      ▼
 Answer Generation (Gemini 2.5 Flash)
-  → System prompt enforces citation format [Paper Title, Page X]
+  → System prompt enforces citation format [Document Title, Page X]
      │
      ▼
 Hallucination Guardrail (Gemini 2.5 Flash)

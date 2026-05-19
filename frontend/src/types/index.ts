@@ -18,7 +18,7 @@ export interface Document {
 }
 
 export interface Citation {
-  paper_title: string;
+  document_title: string;
   page_number: number;
   chunk_id: string;
   relevance_score: number;

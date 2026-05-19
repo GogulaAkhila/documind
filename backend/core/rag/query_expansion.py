@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 MODEL = "models/gemini-2.5-flash"
 
-EXPANSION_PROMPT = """Given the following user question about research papers, generate 3 alternative 
+EXPANSION_PROMPT = """Given the following user question about the uploaded documents, generate 3 alternative 
 formulations of the same question that might help retrieve relevant passages.
 
 Return ONLY a JSON array of strings, no other text. Example: ["question 1", "question 2", "question 3"]

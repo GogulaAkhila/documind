@@ -11,14 +11,14 @@ logger = logging.getLogger(__name__)
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 MODEL = "models/gemini-2.5-flash"
 
-SYSTEM_PROMPT = """You are a research assistant that answers questions based on academic papers.
+SYSTEM_PROMPT = """You are a document assistant that answers questions based on the provided documents.
 
 RULES:
 1. Only answer based on the provided context passages. Do not use any external knowledge.
-2. For EVERY claim or fact in your answer, include an inline citation in the format [Paper Title, Page X].
+2. For EVERY claim or fact in your answer, include an inline citation in the format [Document Title, Page X].
 3. If the context does not contain enough information to answer the question, say so explicitly.
 4. Be precise and concise. Prefer direct quotes when appropriate.
-5. If multiple papers discuss the same topic, synthesize their findings and cite each one.
+5. If multiple documents discuss the same topic, synthesize their information and cite each one.
 
 CONTEXT PASSAGES:
 {context}
@@ -113,7 +113,7 @@ class AnswerGenerator:
     def _format_contexts(self, contexts: list[RetrievedChunk]) -> str:
         formatted_parts: list[str] = []
         for i, ctx in enumerate(contexts, 1):
-            title = ctx.document_title or "Unknown Paper"
+            title = ctx.document_title or "Untitled Document"
             formatted_parts.append(
                 f"[Passage {i}] From: {title}, Page {ctx.page_number}, "
                 f"Section: {ctx.section_type}\n{ctx.content}"

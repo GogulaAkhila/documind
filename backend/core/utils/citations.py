@@ -12,7 +12,7 @@ def extract_citations(
 ) -> list[dict[str, Any]]:
     """
     Extracts inline citations from an answer and maps them to source chunks.
-    Citations are expected in the format [Paper Title, Page X].
+    Citations are expected in the format [Document Title, Page X].
     """
     if not answer:
         return []

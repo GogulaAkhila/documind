@@ -46,7 +46,7 @@ export function Home() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold tracking-tight">Welcome to DocuMind</h1>
         <p className="mt-1 text-muted-foreground">
-          Upload research papers, ask questions, and get cited answers powered by
+          Upload documents, ask questions, and get cited answers powered by
           RAG.
         </p>
       </div>

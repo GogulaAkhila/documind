@@ -39,7 +39,7 @@ export function ChatInput({ onSend }: ChatInputProps) {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask a question about your papers..."
+          placeholder="Ask a question about your documents..."
           className="min-h-[44px] max-h-[200px] resize-none"
           rows={1}
           disabled={isStreaming}

@@ -12,6 +12,23 @@ SECTION_PATTERNS: list[tuple[str, str]] = [
     (r"(?i)^(?:\d+\.?\s*)?discussion\b", "discussion"),
     (r"(?i)^(?:\d+\.?\s*)?conclusions?\b", "conclusion"),
     (r"(?i)^(?:\d+\.?\s*)?references?\b", "references"),
+    # Enterprise / Technical docs
+    (r"(?i)^(?:\d+\.?\s*)?(?:executive\s+)?summary\b", "summary"),
+    (r"(?i)^(?:\d+\.?\s*)?(?:purpose|objective)s?\b", "purpose"),
+    (r"(?i)^(?:\d+\.?\s*)?scope\b", "scope"),
+    (r"(?i)^(?:\d+\.?\s*)?(?:pre-?requisites?|requirements?)\b", "requirements"),
+    (r"(?i)^(?:\d+\.?\s*)?(?:installation|setup)\b", "procedure"),
+    (r"(?i)^(?:\d+\.?\s*)?(?:configuration|settings?)\b", "procedure"),
+    (r"(?i)^(?:\d+\.?\s*)?(?:procedures?|process(?:es)?|steps?|instructions?|how\s+to)\b", "procedure"),
+    (r"(?i)^(?:\d+\.?\s*)?(?:responsibilit(?:y|ies)|roles?\s+and\s+responsibilit)\b", "procedure"),
+    (r"(?i)^(?:\d+\.?\s*)?(?:troubleshoot(?:ing)?|known\s+issues?|common\s+(?:problems?|errors?))\b", "troubleshooting"),
+    (r"(?i)^(?:\d+\.?\s*)?(?:faq|frequently\s+asked)\b", "faq"),
+    (r"(?i)^(?:\d+\.?\s*)?(?:glossary|definitions?|terminology)\b", "glossary"),
+    (r"(?i)^(?:\d+\.?\s*)?(?:appendi(?:x|ces)|annex(?:es)?)\b", "appendix"),
+    (r"(?i)^(?:\d+\.?\s*)?overview\b", "overview"),
+    (r"(?i)^(?:\d+\.?\s*)?(?:architecture|design|system\s+design)\b", "overview"),
+    (r"(?i)^(?:\d+\.?\s*)?(?:security|compliance|policy|policies)\b", "policy"),
+    (r"(?i)^(?:\d+\.?\s*)?(?:revision\s+history|change\s*log|version\s+history)\b", "references"),
 ]
 
 MAX_CHUNK_SIZE = 1500
@@ -28,7 +45,7 @@ class Chunk:
 
 
 class SemanticChunker:
-    """Splits academic papers by detected sections with fallback to recursive splitting."""
+    """Splits documents by detected sections with fallback to recursive splitting."""
 
     def chunk_document(
         self,

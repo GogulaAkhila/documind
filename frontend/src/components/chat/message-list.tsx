@@ -23,9 +23,9 @@ export function MessageList() {
         <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
           <Bot className="h-8 w-8 text-primary" />
         </div>
-        <h3 className="mb-1 text-lg font-semibold">Ask anything about your papers</h3>
+        <h3 className="mb-1 text-lg font-semibold">Ask anything about your documents</h3>
         <p className="max-w-md text-sm text-muted-foreground">
-          I can answer questions, summarize findings, compare papers, and cite
+          I can answer questions, summarize findings, compare documents, and cite
           specific passages from your uploaded documents.
         </p>
       </div>
@@ -62,7 +62,7 @@ export function MessageList() {
                       key={citation.chunk_id}
                       className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
                     >
-                      [{i + 1}] {citation.paper_title}
+                      [{i + 1}] {citation.document_title}
                     </span>
                   ))}
                 </div>

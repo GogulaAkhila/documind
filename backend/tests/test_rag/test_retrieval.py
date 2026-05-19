@@ -15,21 +15,21 @@ class TestHybridRetriever:
         dense_results = [
             RetrievedChunk(
                 chunk_id="a", content="Dense result A", section_type="methods",
-                page_number=1, document_title="Paper 1", score=0.95,
+                page_number=1, document_title="Document 1", score=0.95,
             ),
             RetrievedChunk(
                 chunk_id="b", content="Dense result B", section_type="results",
-                page_number=2, document_title="Paper 1", score=0.90,
+                page_number=2, document_title="Document 1", score=0.90,
             ),
         ]
         sparse_results = [
             RetrievedChunk(
                 chunk_id="b", content="Sparse result B", section_type="results",
-                page_number=2, document_title="Paper 1", score=5.2,
+                page_number=2, document_title="Document 1", score=5.2,
             ),
             RetrievedChunk(
                 chunk_id="c", content="Sparse result C", section_type="abstract",
-                page_number=1, document_title="Paper 2", score=4.8,
+                page_number=1, document_title="Document 2", score=4.8,
             ),
         ]
 
