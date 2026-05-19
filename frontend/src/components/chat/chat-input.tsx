@@ -1,25 +1,26 @@
 import { useState, useRef, useCallback } from "react";
-import { SendHorizonal } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ArrowUp } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useChatStore } from "@/stores/chat-store";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
+  disabled?: boolean;
 }
 
-export function ChatInput({ onSend }: ChatInputProps) {
+export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isStreaming = useChatStore((s) => s.isStreaming);
+  const isDisabled = disabled || isStreaming;
 
   const handleSubmit = useCallback(() => {
     const trimmed = value.trim();
-    if (!trimmed || isStreaming) return;
+    if (!trimmed || isDisabled) return;
     onSend(trimmed);
     setValue("");
     textareaRef.current?.focus();
-  }, [value, isStreaming, onSend]);
+  }, [value, isDisabled, onSend]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -32,28 +33,29 @@ export function ChatInput({ onSend }: ChatInputProps) {
   );
 
   return (
-    <div className="border-t bg-background p-4">
+    <div className="border-t bg-background px-4 py-3">
       <div className="mx-auto flex max-w-3xl items-end gap-2">
-        <Textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Ask a question about your documents..."
-          className="min-h-[44px] max-h-[200px] resize-none"
-          rows={1}
-          disabled={isStreaming}
-        />
-        <Button
-          size="icon"
-          onClick={handleSubmit}
-          disabled={!value.trim() || isStreaming}
-          className="h-[44px] w-[44px] shrink-0"
-        >
-          <SendHorizonal className="h-4 w-4" />
-        </Button>
+        <div className="relative flex-1">
+          <Textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask anything about these papers..."
+            className="min-h-[44px] max-h-[200px] resize-none rounded-xl pr-12 text-sm"
+            rows={1}
+            disabled={isDisabled}
+          />
+          <button
+            onClick={handleSubmit}
+            disabled={!value.trim() || isDisabled}
+            className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-30"
+          >
+            <ArrowUp className="h-4 w-4" />
+          </button>
+        </div>
       </div>
-      <p className="mx-auto mt-2 max-w-3xl text-center text-[10px] text-muted-foreground">
+      <p className="mx-auto mt-1.5 max-w-3xl text-center text-[10px] text-muted-foreground">
         Answers are generated from your uploaded documents. Always verify critical claims.
       </p>
     </div>

@@ -22,6 +22,7 @@ export interface Citation {
   page_number: number;
   chunk_id: string;
   relevance_score: number;
+  snippet?: string;
 }
 
 export interface Message {

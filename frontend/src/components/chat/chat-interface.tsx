@@ -58,7 +58,7 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
         <div className="flex-1 space-y-4 p-4">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="flex gap-3">
-              <Skeleton className="h-8 w-8 rounded-full" />
+              <Skeleton className="h-7 w-7 rounded-full" />
               <Skeleton className="h-16 w-2/3 rounded-2xl" />
             </div>
           ))}
