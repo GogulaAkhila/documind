@@ -47,7 +47,7 @@ export function CreateCollectionDialog({
         <DialogHeader>
           <DialogTitle>Create Collection</DialogTitle>
           <DialogDescription>
-            A collection groups related research papers for focused Q&A.
+            A collection groups related documents for focused Q&A.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -57,7 +57,7 @@ export function CreateCollectionDialog({
             </label>
             <Input
               id="name"
-              placeholder="e.g., Transformer Architecture Papers"
+              placeholder="e.g., Engineering Standards 2026"
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoFocus
@@ -69,7 +69,7 @@ export function CreateCollectionDialog({
             </label>
             <Textarea
               id="description"
-              placeholder="What papers will this collection contain?"
+              placeholder="What documents will this collection contain?"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}

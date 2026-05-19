@@ -94,3 +94,16 @@ class TestSemanticChunker:
         section_types = {c.section_type for c in chunks}
         assert "abstract" in section_types
         assert "introduction" in section_types
+
+
+class TestEnterpriseChunking:
+    def test_detects_enterprise_sections(self):
+        pages = {
+            1: "1. Purpose\nThis document defines the deployment process.\n\n2. Scope\nApplies to all production deployments.\n\n3. Prerequisites\nDocker and kubectl must be installed.",
+            2: "4. Procedure\nStep 1: Pull the latest image.\nStep 2: Run helm upgrade.\n\n5. Troubleshooting\nIf pods fail, check resource limits.\n\n6. FAQ\nQ: How long does deployment take? A: 5-10 minutes.",
+        }
+        chunker = SemanticChunker()
+        chunks = chunker.chunk_document(pages, "Deployment SOP")
+        section_types = {c.section_type for c in chunks}
+        assert "purpose" in section_types or "procedure" in section_types
+        assert len(chunks) >= 3

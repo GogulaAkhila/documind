@@ -30,7 +30,7 @@ export function CollectionList({ onCreateCollection }: CollectionListProps) {
         </div>
         <h3 className="mb-2 text-lg font-semibold">No collections yet</h3>
         <p className="mb-6 max-w-sm text-center text-sm text-muted-foreground">
-          Create your first collection to start uploading research papers and
+          Create your first collection to start uploading documents and
           asking questions.
         </p>
         <Button onClick={onCreateCollection}>Create Collection</Button>

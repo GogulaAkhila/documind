@@ -62,6 +62,17 @@ class DocumentChunk(models.Model):
         DISCUSSION = "discussion", "Discussion"
         CONCLUSION = "conclusion", "Conclusion"
         REFERENCES = "references", "References"
+        SUMMARY = "summary", "Summary"
+        PURPOSE = "purpose", "Purpose"
+        SCOPE = "scope", "Scope"
+        REQUIREMENTS = "requirements", "Requirements"
+        PROCEDURE = "procedure", "Procedure"
+        TROUBLESHOOTING = "troubleshooting", "Troubleshooting"
+        FAQ = "faq", "FAQ"
+        GLOSSARY = "glossary", "Glossary"
+        APPENDIX = "appendix", "Appendix"
+        OVERVIEW = "overview", "Overview"
+        POLICY = "policy", "Policy"
         OTHER = "other", "Other"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -71,7 +82,7 @@ class DocumentChunk(models.Model):
     content = models.TextField()
     chunk_index = models.PositiveIntegerField()
     section_type = models.CharField(
-        max_length=20, choices=SectionType.choices, default=SectionType.OTHER
+        max_length=30, choices=SectionType.choices, default=SectionType.OTHER
     )
     page_number = models.PositiveIntegerField(default=1)
     metadata = models.JSONField(default=dict, blank=True)
