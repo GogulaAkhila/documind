@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { WebSocketManager } from "@/lib/websocket";
@@ -46,18 +46,26 @@ export function useCreateChatSession(collectionId: string) {
 export function useChatMessages(sessionId: string) {
   const setMessages = useChatStore((s) => s.setMessages);
 
-  return useQuery({
+  const query = useQuery({
     queryKey: sessionMessagesKey(sessionId),
     queryFn: async () => {
       const { data } = await api.get<PaginatedResponse<Message>>(
         `/chat/messages/`,
         { params: { session: sessionId } },
       );
-      setMessages(data.results);
       return data.results;
     },
     enabled: !!sessionId,
+    staleTime: 0,
   });
+
+  useEffect(() => {
+    if (query.data) {
+      setMessages(query.data);
+    }
+  }, [query.data, setMessages]);
+
+  return query;
 }
 
 export function useChatWebSocket(sessionId: string | null) {
@@ -135,6 +143,22 @@ export function useSendMessageREST(sessionId: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: sessionMessagesKey(sessionId) });
+    },
+  });
+}
+
+export function updateSessionTitle(sessionId: string, title: string) {
+  return api.patch<ChatSession>(`/chat/sessions/${sessionId}/`, { title });
+}
+
+export function useDeleteChatSession(collectionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (sessionId: string) => {
+      await api.delete(`/chat/sessions/${sessionId}/`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: sessionsKey(collectionId) });
     },
   });
 }

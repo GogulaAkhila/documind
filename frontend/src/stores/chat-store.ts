@@ -7,6 +7,7 @@ interface ChatState {
   isStreaming: boolean;
   streamingContent: string;
   streamingSources: Citation[];
+  activeSources: Citation[];
 
   setCurrentSession: (sessionId: string | null) => void;
   setMessages: (messages: Message[]) => void;
@@ -16,6 +17,7 @@ interface ChatState {
   setStreamingSources: (sources: Citation[]) => void;
   startStreaming: () => void;
   finishStreaming: () => void;
+  setActiveSources: (sources: Citation[]) => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -24,22 +26,46 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isStreaming: false,
   streamingContent: "",
   streamingSources: [],
+  activeSources: [],
 
   setCurrentSession: (sessionId) => set({ currentSessionId: sessionId }),
 
-  setMessages: (messages) => set({ messages }),
+  setMessages: (messages) => {
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+    set({
+      messages,
+      activeSources: lastAssistant?.sources ?? [],
+    });
+  },
 
   addMessage: (message) =>
-    set((state) => ({ messages: [...state.messages, message] })),
+    set((state) => {
+      const newMessages = [...state.messages, message];
+      return {
+        messages: newMessages,
+        activeSources:
+          message.role === "assistant" && message.sources.length > 0
+            ? message.sources
+            : state.activeSources,
+      };
+    }),
 
-  clearMessages: () => set({ messages: [], streamingContent: "", streamingSources: [] }),
+  clearMessages: () =>
+    set({
+      messages: [],
+      isStreaming: false,
+      streamingContent: "",
+      streamingSources: [],
+      activeSources: [],
+    }),
 
   addToken: (token) =>
     set((state) => ({ streamingContent: state.streamingContent + token })),
 
   setStreamingSources: (sources) => set({ streamingSources: sources }),
 
-  startStreaming: () => set({ isStreaming: true, streamingContent: "", streamingSources: [] }),
+  startStreaming: () =>
+    set({ isStreaming: true, streamingContent: "", streamingSources: [] }),
 
   finishStreaming: () => {
     const { streamingContent, streamingSources, messages } = get();
@@ -56,9 +82,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
         isStreaming: false,
         streamingContent: "",
         streamingSources: [],
+        activeSources:
+          streamingSources.length > 0 ? streamingSources : get().activeSources,
       });
     } else {
       set({ isStreaming: false });
     }
   },
+
+  setActiveSources: (sources) => set({ activeSources: sources }),
 }));

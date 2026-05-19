@@ -30,6 +30,7 @@ staticfiles/
 # IDE
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
 *~
