@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   BookOpen,
@@ -15,6 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { Collection } from "@/types";
 
 const ICON_THEMES = [
@@ -56,8 +58,10 @@ interface CollectionCardProps {
 
 export function CollectionCard({ collection, onDelete }: CollectionCardProps) {
   const theme = getIconTheme(collection.id);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   return (
+    <>
     <Link to={`/collections/${collection.id}`} className="group block">
       <Card className="h-full transition-all duration-200 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-0.5 hover:border-primary/20">
         <CardContent className="flex h-full flex-col p-5">
@@ -87,7 +91,7 @@ export function CollectionCard({ collection, onDelete }: CollectionCardProps) {
                   className="text-destructive focus:text-destructive"
                   onClick={(e) => {
                     e.preventDefault();
-                    onDelete(collection.id);
+                    setConfirmDelete(true);
                   }}
                 >
                   <Trash2 className="mr-2 h-3.5 w-3.5" />
@@ -122,5 +126,16 @@ export function CollectionCard({ collection, onDelete }: CollectionCardProps) {
         </CardContent>
       </Card>
     </Link>
+
+    <ConfirmDialog
+      open={confirmDelete}
+      onOpenChange={setConfirmDelete}
+      title="Delete collection"
+      description={`This will permanently delete "${collection.name}" and all its documents and chats. This action cannot be undone.`}
+      confirmLabel="Delete"
+      destructive
+      onConfirm={() => onDelete(collection.id)}
+    />
+    </>
   );
 }
