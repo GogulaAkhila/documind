@@ -1,22 +1,27 @@
-import { BookOpen } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { BookOpen, Plus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CollectionCard } from "./collection-card";
 import { useCollections, useDeleteCollection } from "@/hooks/use-collections";
+import type { Collection } from "@/types";
 
 interface CollectionListProps {
+  collections?: Collection[];
   onCreateCollection: () => void;
 }
 
-export function CollectionList({ onCreateCollection }: CollectionListProps) {
-  const { data: collections, isLoading } = useCollections();
+export function CollectionList({
+  collections: passedCollections,
+  onCreateCollection,
+}: CollectionListProps) {
+  const { data: fetchedCollections, isLoading } = useCollections();
   const deleteCollection = useDeleteCollection();
+  const collections = passedCollections ?? fetchedCollections;
 
   if (isLoading) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-40 w-full rounded-xl" />
+      <div className="grid gap-5 sm:grid-cols-2">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-48 w-full rounded-xl" />
         ))}
       </div>
     );
@@ -30,16 +35,22 @@ export function CollectionList({ onCreateCollection }: CollectionListProps) {
         </div>
         <h3 className="mb-2 text-lg font-semibold">No collections yet</h3>
         <p className="mb-6 max-w-sm text-center text-sm text-muted-foreground">
-          Create your first collection to start uploading documents and
-          asking questions.
+          Create your first collection to start uploading documents and asking
+          questions.
         </p>
-        <Button onClick={onCreateCollection}>Create Collection</Button>
+        <button
+          onClick={onCreateCollection}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          <Plus className="h-4 w-4" />
+          Create Collection
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-5 sm:grid-cols-2">
       {collections.map((collection) => (
         <CollectionCard
           key={collection.id}
@@ -47,6 +58,13 @@ export function CollectionList({ onCreateCollection }: CollectionListProps) {
           onDelete={(id) => deleteCollection.mutate(id)}
         />
       ))}
+      <button
+        onClick={onCreateCollection}
+        className="flex h-48 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border text-muted-foreground transition-colors hover:border-primary/30 hover:bg-accent hover:text-foreground"
+      >
+        <Plus className="h-6 w-6" />
+        <span className="text-sm font-medium">Create new collection</span>
+      </button>
     </div>
   );
 }

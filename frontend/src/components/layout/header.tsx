@@ -1,5 +1,5 @@
 import { useLocation, Link } from "react-router-dom";
-import { Menu, Moon, Sun, Monitor } from "lucide-react";
+import { Menu, Moon, Sun, Monitor, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -7,7 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useUIStore } from "@/stores/ui-store";
 import { useCollection } from "@/hooks/use-collections";
 
@@ -47,7 +47,7 @@ function Breadcrumbs() {
     <nav className="flex items-center gap-1 text-sm text-muted-foreground">
       {crumbs.map((crumb, i) => (
         <span key={crumb.to} className="flex items-center gap-1">
-          {i > 0 && <span className="mx-1">/</span>}
+          {i > 0 && <ChevronRight className="mx-0.5 h-3.5 w-3.5" />}
           {i === crumbs.length - 1 ? (
             <span className="font-medium text-foreground">{crumb.label}</span>
           ) : (
@@ -70,7 +70,7 @@ export function Header() {
   const setTheme = useUIStore((s) => s.setTheme);
 
   return (
-    <header className="flex h-14 items-center gap-3 border-b px-4">
+    <header className="flex h-14 items-center gap-3 border-b bg-background/80 backdrop-blur-sm px-4">
       <Button
         variant="ghost"
         size="icon"
@@ -84,14 +84,16 @@ export function Header() {
 
       <div className="ml-auto flex items-center gap-2">
         <DropdownMenu>
-          <DropdownMenuTrigger className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition-all hover:bg-muted hover:text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50">
-            {theme === "dark" ? (
-              <Moon className="h-4 w-4" />
-            ) : theme === "light" ? (
-              <Sun className="h-4 w-4" />
-            ) : (
-              <Monitor className="h-4 w-4" />
-            )}
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              {theme === "dark" ? (
+                <Moon className="h-4 w-4" />
+              ) : theme === "light" ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Monitor className="h-4 w-4" />
+              )}
+            </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => setTheme("light")}>
@@ -102,13 +104,18 @@ export function Header() {
               <Moon className="mr-2 h-4 w-4" />
               Dark
             </DropdownMenuItem>
-            <Separator className="my-1" />
             <DropdownMenuItem onClick={() => setTheme("system")}>
               <Monitor className="mr-2 h-4 w-4" />
               System
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <Avatar className="h-8 w-8">
+          <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary">
+            AG
+          </AvatarFallback>
+        </Avatar>
       </div>
     </header>
   );
