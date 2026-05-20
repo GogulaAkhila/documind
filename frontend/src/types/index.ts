@@ -15,15 +15,19 @@ export interface Document {
   file_type: string;
   page_count: number;
   status: "pending" | "processing" | "ready" | "failed";
+  error_message?: string;
   uploaded_at: string;
 }
 
 export interface Citation {
-  document_title: string;
-  page_number: number;
+  title: string;
+  page: number;
   chunk_id: string;
   relevance_score: number;
+  section?: string;
   snippet?: string;
+  document_title?: string;
+  page_number?: number;
 }
 
 export interface Message {

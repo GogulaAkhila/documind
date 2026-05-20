@@ -6,7 +6,6 @@ import { ChatInterface } from "@/components/chat/chat-interface";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { SourcesPanel } from "@/components/chat/sources-panel";
 import { useChatStore } from "@/stores/chat-store";
-import { cn } from "@/lib/utils";
 
 export function ChatPage() {
   const { id: collectionId, sessionId } = useParams<{
@@ -27,7 +26,7 @@ export function ChatPage() {
 
   return (
     <div className="flex h-full">
-      {/* Chat history sidebar */}
+      {/* Chat history sidebar — hidden on small screens */}
       {showHistory && collectionId && (
         <ChatSidebar
           collectionId={collectionId}
@@ -47,6 +46,7 @@ export function ChatPage() {
                 size="icon"
                 className="h-7 w-7"
                 onClick={() => setShowHistory(true)}
+                title="Show chat history"
               >
                 <PanelRightOpen className="h-4 w-4 rotate-180" />
               </Button>
@@ -57,36 +57,35 @@ export function ChatPage() {
                 className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 <ArrowLeft className="h-3 w-3" />
-                Back to collection
+                <span className="hidden sm:inline">Back to collection</span>
               </Link>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground">
               <Sparkles className="h-3 w-3" />
-              gemini-2.5-flash
+              <span className="hidden sm:inline">gemini-2.5-flash</span>
             </span>
-            {activeSources.length > 0 && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => setShowSources(!showSources)}
-              >
-                {showSources ? (
-                  <PanelRightClose className="h-4 w-4" />
-                ) : (
-                  <PanelRightOpen className="h-4 w-4" />
-                )}
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => setShowSources(!showSources)}
+              title={showSources ? "Hide sources" : "Show sources"}
+            >
+              {showSources ? (
+                <PanelRightClose className="h-4 w-4" />
+              ) : (
+                <PanelRightOpen className="h-4 w-4" />
+              )}
+            </Button>
           </div>
         </div>
 
         <ChatInterface sessionId={sessionId} />
       </div>
 
-      {/* Sources sidebar */}
+      {/* Sources sidebar — lg only, hidden if no sources or toggled off */}
       {showSources && activeSources.length > 0 && (
         <SourcesPanel
           sources={activeSources}

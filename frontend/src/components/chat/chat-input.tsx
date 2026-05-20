@@ -1,36 +1,33 @@
-import { useState, useRef, useCallback } from "react";
-import { ArrowUp } from "lucide-react";
+import { useState, useRef } from "react";
+import { ArrowUp, Square } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useChatStore } from "@/stores/chat-store";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
+  onStop?: () => void;
   disabled?: boolean;
 }
 
-export function ChatInput({ onSend, disabled }: ChatInputProps) {
+export function ChatInput({ onSend, onStop, disabled }: ChatInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isStreaming = useChatStore((s) => s.isStreaming);
-  const isDisabled = disabled || isStreaming;
 
-  const handleSubmit = useCallback(() => {
+  function handleSubmit() {
     const trimmed = value.trim();
-    if (!trimmed || isDisabled) return;
+    if (!trimmed || disabled || isStreaming) return;
     onSend(trimmed);
     setValue("");
     textareaRef.current?.focus();
-  }, [value, isDisabled, onSend]);
+  }
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSubmit();
-      }
-    },
-    [handleSubmit],
-  );
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  }
 
   return (
     <div className="border-t bg-background px-4 py-3">
@@ -44,15 +41,25 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
             placeholder="Ask anything about these papers..."
             className="min-h-[44px] max-h-[200px] resize-none rounded-xl pr-12 text-sm"
             rows={1}
-            disabled={isDisabled}
+            disabled={disabled || isStreaming}
           />
-          <button
-            onClick={handleSubmit}
-            disabled={!value.trim() || isDisabled}
-            className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-30"
-          >
-            <ArrowUp className="h-4 w-4" />
-          </button>
+          {isStreaming ? (
+            <button
+              onClick={onStop}
+              className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-lg bg-destructive text-destructive-foreground transition-colors hover:bg-destructive/90"
+              title="Stop generating"
+            >
+              <Square className="h-3.5 w-3.5" />
+            </button>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={!value.trim() || disabled}
+              className="absolute bottom-2 right-2 flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-opacity disabled:opacity-30"
+            >
+              <ArrowUp className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
       <p className="mx-auto mt-1.5 max-w-3xl text-center text-[10px] text-muted-foreground">

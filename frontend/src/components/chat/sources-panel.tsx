@@ -1,6 +1,9 @@
-import { X, FileText, ExternalLink } from "lucide-react";
+import { X, ExternalLink } from "lucide-react";
+import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { useChatStore } from "@/stores/chat-store";
+import { useDocuments } from "@/hooks/use-documents";
+import { cn } from "@/lib/utils";
 import type { Citation } from "@/types";
 
 interface SourcesPanelProps {
@@ -8,11 +11,37 @@ interface SourcesPanelProps {
   onClose: () => void;
 }
 
+function getTitle(source: Citation): string {
+  return source.title || source.document_title || "Unknown";
+}
+
+function getPage(source: Citation): number {
+  return source.page || source.page_number || 0;
+}
+
 export function SourcesPanel({ sources, onClose }: SourcesPanelProps) {
+  const { id: collectionId } = useParams<{ id: string }>();
+  const highlightedIndex = useChatStore((s) => s.highlightedCitationIndex);
+  const setHighlighted = useChatStore((s) => s.setHighlightedCitation);
+  const { data: documents } = useDocuments(collectionId ?? "");
+
+  function openPdf(source: Citation) {
+    const title = getTitle(source);
+    const page = getPage(source);
+    const doc = documents?.find(
+      (d) => d.title === title || title.includes(d.title) || d.title.includes(title),
+    );
+    if (doc?.file) {
+      window.open(`${doc.file}#page=${page}`, "_blank");
+    }
+  }
+
   return (
-    <div className="flex w-72 shrink-0 flex-col border-l bg-muted/20">
+    <div className="hidden w-80 shrink-0 flex-col border-l bg-muted/10 lg:flex">
       <div className="flex h-11 items-center justify-between border-b px-4">
-        <span className="text-sm font-semibold">Sources</span>
+        <span className="text-sm font-semibold">
+          Sources ({sources.length})
+        </span>
         <Button
           variant="ghost"
           size="icon"
@@ -23,52 +52,72 @@ export function SourcesPanel({ sources, onClose }: SourcesPanelProps) {
         </Button>
       </div>
 
-      <ScrollArea className="flex-1 p-3">
-        <div className="space-y-3">
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        <div className="space-y-2">
           {sources.map((source, i) => (
             <div
-              key={source.chunk_id}
-              className="rounded-lg border bg-card p-3 transition-shadow hover:shadow-sm"
+              key={`${source.chunk_id}-${i}`}
+              onMouseEnter={() => setHighlighted(i)}
+              onMouseLeave={() => setHighlighted(null)}
+              className={cn(
+                "rounded-lg border p-3 transition-all",
+                highlightedIndex === i
+                  ? "border-primary bg-primary/5 shadow-sm"
+                  : "bg-card hover:border-primary/30",
+              )}
             >
-              <div className="mb-2 flex items-start justify-between gap-2">
-                <div className="flex items-start gap-2">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-                    {i + 1}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium leading-snug">
-                      {source.document_title}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      p. {source.page_number}
-                    </p>
-                  </div>
+              <div className="flex items-start gap-2">
+                <span
+                  className={cn(
+                    "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold transition-colors",
+                    highlightedIndex === i
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-primary/15 text-primary",
+                  )}
+                >
+                  {i + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium leading-snug">
+                    {getTitle(source)}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Page {getPage(source)}
+                    {source.section && ` · ${source.section}`}
+                  </p>
                 </div>
-                <span className="shrink-0 text-[10px] font-medium text-muted-foreground">
-                  {source.relevance_score.toFixed(2)}
+              </div>
+
+              {/* Relevance bar */}
+              <div className="mt-2 flex items-center gap-2">
+                <div className="h-1 flex-1 rounded-full bg-border overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-primary/60 transition-all"
+                    style={{ width: `${Math.min(source.relevance_score * 100, 100)}%` }}
+                  />
+                </div>
+                <span className="text-[10px] text-muted-foreground">
+                  {(source.relevance_score * 100).toFixed(0)}%
                 </span>
               </div>
 
               {source.snippet && (
-                <p className="mb-2 text-[11px] italic leading-relaxed text-muted-foreground">
+                <p className="mt-2 text-[11px] italic leading-relaxed text-muted-foreground line-clamp-2">
                   "{source.snippet}"
                 </p>
               )}
 
-              <button className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline">
+              <button
+                onClick={() => openPdf(source)}
+                className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
+              >
                 <ExternalLink className="h-3 w-3" />
                 View in PDF
               </button>
             </div>
           ))}
         </div>
-
-        {sources.length > 0 && (
-          <p className="mt-3 text-center text-[10px] text-muted-foreground">
-            Sources ranked by relevance
-          </p>
-        )}
-      </ScrollArea>
+      </div>
     </div>
   );
 }

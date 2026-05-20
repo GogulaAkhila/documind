@@ -18,10 +18,10 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
   const queryClient = useQueryClient();
   const setCurrentSession = useChatStore((s) => s.setCurrentSession);
   const clearMessages = useChatStore((s) => s.clearMessages);
-  const messages = useChatStore((s) => s.messages);
   const addMessage = useChatStore((s) => s.addMessage);
   const startStreaming = useChatStore((s) => s.startStreaming);
   const finishStreaming = useChatStore((s) => s.finishStreaming);
+  const setStreamingPhase = useChatStore((s) => s.setStreamingPhase);
   const { isLoading } = useChatMessages(sessionId);
   const sendMessageMutation = useSendMessageREST(sessionId);
   const initialSent = useRef(false);
@@ -48,6 +48,10 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
       };
       addMessage(userMessage);
       startStreaming();
+
+      // Simulate phase progression (since REST doesn't give real-time phases)
+      setTimeout(() => setStreamingPhase("reranking"), 800);
+      setTimeout(() => setStreamingPhase("generating"), 1600);
 
       const isFirstMessage =
         !titleUpdated.current &&
@@ -77,8 +81,12 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
         },
       });
     },
-    [addMessage, startStreaming, finishStreaming, sendMessageMutation, sessionId, collectionId, queryClient],
+    [addMessage, startStreaming, finishStreaming, setStreamingPhase, sendMessageMutation, sessionId, collectionId, queryClient],
   );
+
+  const handleStop = useCallback(() => {
+    finishStreaming();
+  }, [finishStreaming]);
 
   useEffect(() => {
     const initial = (location.state as any)?.initialMessage;
@@ -96,7 +104,7 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="flex gap-3">
               <Skeleton className="h-7 w-7 rounded-full" />
-              <Skeleton className="h-16 w-2/3 rounded-2xl" />
+              <Skeleton className="h-16 flex-1 rounded-xl" />
             </div>
           ))}
         </div>
@@ -107,7 +115,11 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
   return (
     <div className="flex h-full flex-col">
       <MessageList />
-      <ChatInput onSend={handleSend} disabled={sendMessageMutation.isPending} />
+      <ChatInput
+        onSend={handleSend}
+        onStop={handleStop}
+        disabled={sendMessageMutation.isPending}
+      />
     </div>
   );
 }
