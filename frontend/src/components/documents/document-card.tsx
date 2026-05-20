@@ -2,7 +2,7 @@ import { useState } from "react";
 import { FileText, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { ProcessingStatus } from "./processing-status";
+import { ProcessingStatus, getStatusDescription } from "./processing-status";
 import type { Document } from "@/types";
 
 interface DocumentCardProps {
@@ -12,6 +12,7 @@ interface DocumentCardProps {
 
 export function DocumentCard({ document, onDelete }: DocumentCardProps) {
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const isProcessing = document.status === "pending" || document.status === "processing";
 
   return (
     <>
@@ -23,8 +24,12 @@ export function DocumentCard({ document, onDelete }: DocumentCardProps) {
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{document.title}</p>
           <p className="text-xs text-muted-foreground">
-            {document.page_count} pages &middot;{" "}
-            {document.status === "ready" ? "indexed" : document.status}
+            {document.page_count > 0 && `${document.page_count} pages · `}
+            {isProcessing
+              ? getStatusDescription(document.status)
+              : document.status === "ready"
+                ? "indexed"
+                : document.error_message || "processing failed"}
           </p>
         </div>
 
@@ -35,6 +40,7 @@ export function DocumentCard({ document, onDelete }: DocumentCardProps) {
           size="icon"
           className="h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
           onClick={() => setConfirmDelete(true)}
+          disabled={document.status === "processing"}
         >
           <Trash2 className="h-3.5 w-3.5 text-destructive" />
         </Button>
