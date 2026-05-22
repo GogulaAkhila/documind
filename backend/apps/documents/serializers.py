@@ -50,6 +50,6 @@ class DocumentChunkSerializer(serializers.ModelSerializer):
         model = DocumentChunk
         fields = [
             "id", "document", "document_title", "content", "chunk_index",
-            "section_type", "page_number", "metadata", "embedding_id",
+            "section_type", "content_type", "page_number", "metadata", "embedding_id",
         ]
         read_only_fields = ["id"]

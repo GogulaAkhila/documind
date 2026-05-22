@@ -1,201 +1,248 @@
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass, field
+from io import BytesIO
+from typing import Any
+
+from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
+from docling.chunking import HybridChunker
+from docling.datamodel.base_models import DocumentStream, InputFormat
+from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
+from docling.datamodel.pipeline_options import (
+    PdfPipelineOptions,
+    TableFormerMode,
+    TableStructureOptions,
+)
+from docling.document_converter import DocumentConverter, PdfFormatOption
+from docling_core.types.doc import DoclingDocument, TableItem
 
 logger = logging.getLogger(__name__)
 
-SECTION_PATTERNS: list[tuple[str, str]] = [
-    (r"(?i)^(?:\d+\.?\s*)?abstract\b", "abstract"),
-    (r"(?i)^(?:\d+\.?\s*)?introduction\b", "introduction"),
-    (r"(?i)^(?:\d+\.?\s*)?(?:materials?\s*(?:and|&)\s*)?methods?\b", "methods"),
-    (r"(?i)^(?:\d+\.?\s*)?results?\b", "results"),
-    (r"(?i)^(?:\d+\.?\s*)?discussion\b", "discussion"),
-    (r"(?i)^(?:\d+\.?\s*)?conclusions?\b", "conclusion"),
-    (r"(?i)^(?:\d+\.?\s*)?references?\b", "references"),
-    # Enterprise / Technical docs
-    (r"(?i)^(?:\d+\.?\s*)?(?:executive\s+)?summary\b", "summary"),
-    (r"(?i)^(?:\d+\.?\s*)?(?:purpose|objective)s?\b", "purpose"),
-    (r"(?i)^(?:\d+\.?\s*)?scope\b", "scope"),
-    (r"(?i)^(?:\d+\.?\s*)?(?:pre-?requisites?|requirements?)\b", "requirements"),
-    (r"(?i)^(?:\d+\.?\s*)?(?:installation|setup)\b", "procedure"),
-    (r"(?i)^(?:\d+\.?\s*)?(?:configuration|settings?)\b", "procedure"),
-    (r"(?i)^(?:\d+\.?\s*)?(?:procedures?|process(?:es)?|steps?|instructions?|how\s+to)\b", "procedure"),
-    (r"(?i)^(?:\d+\.?\s*)?(?:responsibilit(?:y|ies)|roles?\s+and\s+responsibilit)\b", "procedure"),
-    (r"(?i)^(?:\d+\.?\s*)?(?:troubleshoot(?:ing)?|known\s+issues?|common\s+(?:problems?|errors?))\b", "troubleshooting"),
-    (r"(?i)^(?:\d+\.?\s*)?(?:faq|frequently\s+asked)\b", "faq"),
-    (r"(?i)^(?:\d+\.?\s*)?(?:glossary|definitions?|terminology)\b", "glossary"),
-    (r"(?i)^(?:\d+\.?\s*)?(?:appendi(?:x|ces)|annex(?:es)?)\b", "appendix"),
-    (r"(?i)^(?:\d+\.?\s*)?overview\b", "overview"),
-    (r"(?i)^(?:\d+\.?\s*)?(?:architecture|design|system\s+design)\b", "overview"),
-    (r"(?i)^(?:\d+\.?\s*)?(?:security|compliance|policy|policies)\b", "policy"),
-    (r"(?i)^(?:\d+\.?\s*)?(?:revision\s+history|change\s*log|version\s+history)\b", "references"),
-]
+MAX_TOKENS = 512
+MIN_CHUNK_CHARS = 50
+TOKENIZER_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
-MAX_CHUNK_SIZE = 1500
-CHUNK_OVERLAP = 200
-MIN_CHUNK_SIZE = 100
+SECTION_TYPE_MAP: dict[str, str] = {
+    "abstract": "abstract",
+    "introduction": "introduction",
+    "method": "methods",
+    "methods": "methods",
+    "materials and methods": "methods",
+    "result": "results",
+    "results": "results",
+    "discussion": "discussion",
+    "conclusion": "conclusion",
+    "conclusions": "conclusion",
+    "reference": "references",
+    "references": "references",
+    "bibliography": "references",
+    "summary": "summary",
+    "executive summary": "summary",
+    "purpose": "purpose",
+    "objective": "purpose",
+    "objectives": "purpose",
+    "scope": "scope",
+    "prerequisite": "requirements",
+    "prerequisites": "requirements",
+    "requirement": "requirements",
+    "requirements": "requirements",
+    "installation": "procedure",
+    "setup": "procedure",
+    "configuration": "procedure",
+    "procedure": "procedure",
+    "procedures": "procedure",
+    "process": "procedure",
+    "steps": "procedure",
+    "instructions": "procedure",
+    "how to": "procedure",
+    "troubleshooting": "troubleshooting",
+    "known issues": "troubleshooting",
+    "faq": "faq",
+    "frequently asked questions": "faq",
+    "glossary": "glossary",
+    "definitions": "glossary",
+    "terminology": "glossary",
+    "appendix": "appendix",
+    "annex": "appendix",
+    "overview": "overview",
+    "architecture": "overview",
+    "design": "overview",
+    "system design": "overview",
+    "security": "policy",
+    "compliance": "policy",
+    "policy": "policy",
+    "revision history": "references",
+    "changelog": "references",
+}
 
 
 @dataclass
 class Chunk:
+    """Represents a processed document chunk ready for embedding and storage."""
+
     content: str
+    content_for_embedding: str
     section_type: str
     page_number: int
     metadata: dict = field(default_factory=dict)
 
 
-class SemanticChunker:
-    """Splits documents by detected sections with fallback to recursive splitting."""
+def _build_converter() -> DocumentConverter:
+    pipeline_options = PdfPipelineOptions()
+    pipeline_options.do_table_structure = True
+    pipeline_options.table_structure_options = TableStructureOptions(
+        do_cell_matching=True,
+        mode=TableFormerMode.FAST,
+    )
+    pipeline_options.do_ocr = False
+    pipeline_options.accelerator_options = AcceleratorOptions(
+        num_threads=4,
+        device=AcceleratorDevice.CPU,
+    )
 
-    def chunk_document(
-        self,
-        pages: dict[int, str],
-        document_title: str = "",
-    ) -> list[Chunk]:
-        sections = self._detect_sections(pages)
-
-        if not sections:
-            return self._fallback_chunk(pages, document_title)
-
-        chunks: list[Chunk] = []
-        for section in sections:
-            section_chunks = self._split_section(
-                text=section["text"],
-                section_type=section["type"],
-                start_page=section["page"],
-                document_title=document_title,
+    return DocumentConverter(
+        format_options={
+            InputFormat.PDF: PdfFormatOption(
+                backend=PyPdfiumDocumentBackend,
+                pipeline_options=pipeline_options,
             )
-            chunks.extend(section_chunks)
+        }
+    )
 
-        if not chunks:
-            return self._fallback_chunk(pages, document_title)
 
-        logger.info(
-            "Document chunked by sections",
-            extra={"chunk_count": len(chunks), "title": document_title},
-        )
-        return chunks
+def _build_chunker() -> HybridChunker:
+    from docling_core.transforms.chunker.tokenizer.huggingface import (
+        HuggingFaceTokenizer,
+    )
+    from transformers import AutoTokenizer
 
-    def _detect_sections(self, pages: dict[int, str]) -> list[dict]:
-        sections: list[dict] = []
-        current_section: dict | None = None
+    tokenizer = HuggingFaceTokenizer(
+        tokenizer=AutoTokenizer.from_pretrained(TOKENIZER_MODEL),
+        max_tokens=MAX_TOKENS,
+    )
+    return HybridChunker(
+        tokenizer=tokenizer,
+        max_tokens=MAX_TOKENS,
+        merge_peers=True,
+        repeat_table_header=True,
+    )
 
-        for page_num in sorted(pages.keys()):
-            lines = pages[page_num].split("\n")
-            for line in lines:
-                stripped = line.strip()
-                if not stripped:
-                    continue
 
-                detected_type = self._match_section_header(stripped)
-                if detected_type:
-                    if current_section and current_section["text"].strip():
-                        sections.append(current_section)
-                    current_section = {
-                        "type": detected_type,
-                        "text": "",
-                        "page": page_num,
-                    }
-                elif current_section is not None:
-                    current_section["text"] += line + "\n"
-                else:
-                    current_section = {
-                        "type": "other",
-                        "text": line + "\n",
-                        "page": page_num,
-                    }
+_converter: DocumentConverter | None = None
+_chunker: HybridChunker | None = None
 
-        if current_section and current_section["text"].strip():
-            sections.append(current_section)
 
-        return sections
+def get_converter() -> DocumentConverter:
+    global _converter
+    if _converter is None:
+        _converter = _build_converter()
+    return _converter
 
-    def _match_section_header(self, line: str) -> str | None:
-        if len(line) > 100:
-            return None
-        for pattern, section_type in SECTION_PATTERNS:
-            if re.match(pattern, line):
+
+def get_chunker() -> HybridChunker:
+    global _chunker
+    if _chunker is None:
+        _chunker = _build_chunker()
+    return _chunker
+
+
+def _normalize_unicode(text: str) -> str:
+    text = unicodedata.normalize("NFKC", text)
+    text = text.replace("\u2018", "'").replace("\u2019", "'")
+    text = text.replace("\u201c", '"').replace("\u201d", '"')
+    text = text.replace("\u2013", "-").replace("\u2014", "-")
+    return text
+
+
+def _classify_section(headings: list[str]) -> str:
+    for heading in reversed(headings):
+        normalized = re.sub(r"^\d+[\.\)]\s*", "", heading).strip().lower()
+        if normalized in SECTION_TYPE_MAP:
+            return SECTION_TYPE_MAP[normalized]
+        for key, section_type in SECTION_TYPE_MAP.items():
+            if key in normalized:
                 return section_type
-        return None
+    return "other"
 
-    def _split_section(
-        self,
-        text: str,
-        section_type: str,
-        start_page: int,
-        document_title: str,
-    ) -> list[Chunk]:
-        if len(text) <= MAX_CHUNK_SIZE:
-            if len(text.strip()) < MIN_CHUNK_SIZE:
-                return []
-            return [
-                Chunk(
-                    content=text.strip(),
-                    section_type=section_type,
-                    page_number=start_page,
-                    metadata={"document_title": document_title},
-                )
-            ]
 
-        return self._recursive_split(text, section_type, start_page, document_title)
+def _get_content_type(doc_items: list[Any]) -> str:
+    for item in doc_items:
+        if isinstance(item, TableItem):
+            return "table"
+    return "prose"
 
-    def _recursive_split(
-        self,
-        text: str,
-        section_type: str,
-        page_number: int,
-        document_title: str,
-    ) -> list[Chunk]:
-        chunks: list[Chunk] = []
-        separators = ["\n\n", "\n", ". ", " "]
 
-        parts = self._split_by_separators(text, separators)
+def _get_page_number(chunk_meta: Any) -> int:
+    """Extract page number from chunk metadata's doc_items provenance."""
+    if not hasattr(chunk_meta, "doc_items") or not chunk_meta.doc_items:
+        return 1
+    for item_ref in chunk_meta.doc_items:
+        item = item_ref if not callable(getattr(item_ref, "resolve", None)) else item_ref
+        if hasattr(item, "prov") and item.prov:
+            for prov in item.prov:
+                if hasattr(prov, "page_no") and prov.page_no:
+                    return prov.page_no
+    return 1
 
-        current_chunk = ""
-        for part in parts:
-            if len(current_chunk) + len(part) <= MAX_CHUNK_SIZE:
-                current_chunk += part
-            else:
-                if current_chunk.strip() and len(current_chunk.strip()) >= MIN_CHUNK_SIZE:
-                    chunks.append(
-                        Chunk(
-                            content=current_chunk.strip(),
-                            section_type=section_type,
-                            page_number=page_number,
-                            metadata={"document_title": document_title},
-                        )
-                    )
-                overlap_text = current_chunk[-CHUNK_OVERLAP:] if len(current_chunk) > CHUNK_OVERLAP else ""
-                current_chunk = overlap_text + part
 
-        if current_chunk.strip() and len(current_chunk.strip()) >= MIN_CHUNK_SIZE:
-            chunks.append(
-                Chunk(
-                    content=current_chunk.strip(),
-                    section_type=section_type,
-                    page_number=page_number,
-                    metadata={"document_title": document_title},
-                )
+def extract_and_chunk(
+    pdf_bytes: bytes,
+    document_title: str = "",
+    filename: str = "document.pdf",
+) -> tuple[DoclingDocument, list[Chunk]]:
+    converter = get_converter()
+    chunker = get_chunker()
+
+    stream = DocumentStream(name=filename, stream=BytesIO(pdf_bytes))
+    result = converter.convert(stream)
+    doc = result.document
+
+    raw_chunks = list(chunker.chunk(doc))
+    chunks: list[Chunk] = []
+
+    for idx, raw_chunk in enumerate(raw_chunks):
+        text = raw_chunk.text.strip()
+        if len(text) < MIN_CHUNK_CHARS:
+            continue
+
+        text = _normalize_unicode(text)
+
+        headings = raw_chunk.meta.headings if raw_chunk.meta.headings else []
+        section_type = _classify_section(headings)
+
+        contextualized = chunker.contextualize(raw_chunk)
+        contextualized = _normalize_unicode(contextualized)
+
+        content_type = _get_content_type(
+            raw_chunk.meta.doc_items if raw_chunk.meta.doc_items else []
+        )
+        page_number = _get_page_number(raw_chunk.meta)
+        section_path = " > ".join(headings) if headings else ""
+
+        chunks.append(
+            Chunk(
+                content=text,
+                content_for_embedding=contextualized,
+                section_type=section_type,
+                page_number=page_number,
+                metadata={
+                    "document_title": document_title,
+                    "section_path": section_path,
+                    "content_type": content_type,
+                    "heading_level": len(headings),
+                    "chunk_index": idx,
+                },
             )
+        )
 
-        return chunks
-
-    def _split_by_separators(self, text: str, separators: list[str]) -> list[str]:
-        parts = [text]
-        for sep in separators:
-            new_parts = []
-            for part in parts:
-                if len(part) <= MAX_CHUNK_SIZE:
-                    new_parts.append(part)
-                else:
-                    split_parts = part.split(sep)
-                    for i, sp in enumerate(split_parts):
-                        new_parts.append(sp + (sep if i < len(split_parts) - 1 else ""))
-            parts = new_parts
-        return parts
-
-    def _fallback_chunk(self, pages: dict[int, str], document_title: str) -> list[Chunk]:
-        full_text = "\n".join(pages[p] for p in sorted(pages.keys()))
-        page_list = sorted(pages.keys())
-        first_page = page_list[0] if page_list else 1
-        return self._recursive_split(full_text, "other", first_page, document_title)
+    logger.info(
+        "Document processed with Docling",
+        extra={
+            "title": document_title,
+            "total_raw_chunks": len(raw_chunks),
+            "filtered_chunks": len(chunks),
+            "page_count": doc.num_pages(),
+        },
+    )
+    return doc, chunks

@@ -1,109 +1,95 @@
 import pytest
 
-from core.rag.chunking import MAX_CHUNK_SIZE, MIN_CHUNK_SIZE, Chunk, SemanticChunker
+from core.rag.chunking import (
+    Chunk,
+    _classify_section,
+    _normalize_unicode,
+)
 
 
-class TestSemanticChunker:
-    def setup_method(self):
-        self.chunker = SemanticChunker()
+class TestChunkDataclass:
+    def test_chunk_has_required_fields(self):
+        chunk = Chunk(
+            content="Test content",
+            content_for_embedding="Section > Test content",
+            section_type="methods",
+            page_number=3,
+            metadata={"document_title": "Paper"},
+        )
+        assert chunk.content == "Test content"
+        assert chunk.content_for_embedding == "Section > Test content"
+        assert chunk.section_type == "methods"
+        assert chunk.page_number == 3
+        assert chunk.metadata["document_title"] == "Paper"
 
-    def test_chunks_document_with_clear_sections(self, sample_pages):
-        chunks = self.chunker.chunk_document(sample_pages, "Test Paper")
-
-        assert len(chunks) > 0
-        assert all(isinstance(c, Chunk) for c in chunks)
-
-        section_types = {c.section_type for c in chunks}
-        assert "abstract" in section_types
-        assert "methods" in section_types
-
-    def test_assigns_correct_section_types(self, sample_pages):
-        chunks = self.chunker.chunk_document(sample_pages, "Test Paper")
-
-        abstract_chunks = [c for c in chunks if c.section_type == "abstract"]
-        assert len(abstract_chunks) >= 1
-        assert "Transformer" in abstract_chunks[0].content
-
-    def test_preserves_page_numbers(self, sample_pages):
-        chunks = self.chunker.chunk_document(sample_pages, "Test Paper")
-
-        for chunk in chunks:
-            assert chunk.page_number >= 1
-            assert chunk.page_number <= max(sample_pages.keys())
-
-    def test_includes_metadata_with_document_title(self, sample_pages):
-        chunks = self.chunker.chunk_document(sample_pages, "My Paper")
-
-        for chunk in chunks:
-            assert chunk.metadata.get("document_title") == "My Paper"
-
-    def test_fallback_for_unstructured_text(self):
-        pages = {
-            1: "Some random text without any section headers. " * 50,
-            2: "More text that does not follow academic structure. " * 50,
-        }
-        chunks = self.chunker.chunk_document(pages, "Random Doc")
-
-        assert len(chunks) > 0
-        assert all(c.section_type == "other" for c in chunks)
-
-    def test_respects_max_chunk_size(self):
-        pages = {
-            1: "Abstract\n" + ("A" * 3000),
-        }
-        chunks = self.chunker.chunk_document(pages, "Long Abstract")
-
-        for chunk in chunks:
-            assert len(chunk.content) <= MAX_CHUNK_SIZE + 200  # Allow overlap buffer
-
-    def test_filters_out_tiny_chunks(self):
-        pages = {1: "Abstract\nHi"}
-        chunks = self.chunker.chunk_document(pages, "Tiny")
-
-        for chunk in chunks:
-            assert len(chunk.content.strip()) >= MIN_CHUNK_SIZE or len(chunks) == 0
-
-    def test_empty_pages_returns_empty(self):
-        pages = {1: "", 2: "   "}
-        chunks = self.chunker.chunk_document(pages, "Empty")
-        assert chunks == []
-
-    def test_handles_all_section_types(self):
-        pages = {
-            1: "Abstract\nContent of abstract section.",
-            2: "Introduction\nContent of introduction section with enough text to be valid.",
-            3: "Materials and Methods\nContent of methods section with sufficient length.",
-            4: "Results\nContent of results section with data and findings here.",
-            5: "Discussion\nContent of discussion section analyzing the results.",
-            6: "Conclusion\nContent of conclusion section summarizing findings.",
-            7: "References\nContent of references section listing cited works.",
-        }
-        chunks = self.chunker.chunk_document(pages, "Full Paper")
-
-        section_types = {c.section_type for c in chunks}
-        expected = {"abstract", "introduction", "methods", "results", "discussion", "conclusion", "references"}
-        assert expected.issubset(section_types)
-
-    def test_numbered_section_headers(self):
-        pages = {
-            1: "1. Abstract\nContent here in the abstract section for testing purposes.",
-            2: "2. Introduction\nMore content in the introduction section for validation.",
-        }
-        chunks = self.chunker.chunk_document(pages, "Numbered")
-
-        section_types = {c.section_type for c in chunks}
-        assert "abstract" in section_types
-        assert "introduction" in section_types
+    def test_chunk_defaults(self):
+        chunk = Chunk(
+            content="text",
+            content_for_embedding="text",
+            section_type="other",
+            page_number=1,
+        )
+        assert chunk.metadata == {}
 
 
-class TestEnterpriseChunking:
-    def test_detects_enterprise_sections(self):
-        pages = {
-            1: "1. Purpose\nThis document defines the deployment process.\n\n2. Scope\nApplies to all production deployments.\n\n3. Prerequisites\nDocker and kubectl must be installed.",
-            2: "4. Procedure\nStep 1: Pull the latest image.\nStep 2: Run helm upgrade.\n\n5. Troubleshooting\nIf pods fail, check resource limits.\n\n6. FAQ\nQ: How long does deployment take? A: 5-10 minutes.",
-        }
-        chunker = SemanticChunker()
-        chunks = chunker.chunk_document(pages, "Deployment SOP")
-        section_types = {c.section_type for c in chunks}
-        assert "purpose" in section_types or "procedure" in section_types
-        assert len(chunks) >= 3
+class TestSectionClassification:
+    @pytest.mark.parametrize(
+        "headings,expected",
+        [
+            (["Abstract"], "abstract"),
+            (["1. Introduction"], "introduction"),
+            (["Materials and Methods"], "methods"),
+            (["3. Methods"], "methods"),
+            (["Results"], "results"),
+            (["Discussion"], "discussion"),
+            (["Conclusion"], "conclusion"),
+            (["Conclusions"], "conclusion"),
+            (["References"], "references"),
+            (["Bibliography"], "references"),
+        ],
+    )
+    def test_academic_sections(self, headings, expected):
+        assert _classify_section(headings) == expected
+
+    @pytest.mark.parametrize(
+        "headings,expected",
+        [
+            (["Purpose"], "purpose"),
+            (["Scope"], "scope"),
+            (["Prerequisites"], "requirements"),
+            (["Procedure"], "procedure"),
+            (["Troubleshooting"], "troubleshooting"),
+            (["FAQ"], "faq"),
+            (["Glossary"], "glossary"),
+            (["Appendix"], "appendix"),
+            (["Overview"], "overview"),
+            (["Security"], "policy"),
+        ],
+    )
+    def test_enterprise_sections(self, headings, expected):
+        assert _classify_section(headings) == expected
+
+    def test_numbered_heading_stripped(self):
+        assert _classify_section(["3. Methods"]) == "methods"
+        assert _classify_section(["1) Introduction"]) == "introduction"
+
+    def test_nested_headings_falls_back_to_parent(self):
+        assert _classify_section(["1. Introduction", "1.1 Background"]) == "introduction"
+        assert _classify_section(["1. Introduction", "Methods"]) == "methods"
+
+    def test_unknown_heading_returns_other(self):
+        assert _classify_section(["Something Random"]) == "other"
+        assert _classify_section([]) == "other"
+
+
+class TestUnicodeNormalization:
+    def test_smart_quotes(self):
+        assert _normalize_unicode("\u201cHello\u201d") == '"Hello"'
+        assert _normalize_unicode("\u2018Hi\u2019") == "'Hi'"
+
+    def test_dashes(self):
+        assert _normalize_unicode("a\u2013b") == "a-b"
+        assert _normalize_unicode("a\u2014b") == "a-b"
+
+    def test_nfkc_normalization(self):
+        assert _normalize_unicode("\ufb01") == "fi"

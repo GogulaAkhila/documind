@@ -1,12 +1,9 @@
 import logging
-from datetime import timezone
-from typing import BinaryIO
 
-import fitz
 from django.utils import timezone as dj_timezone
 
 from apps.documents.models import Document, DocumentChunk
-from core.rag.chunking import SemanticChunker
+from core.rag.chunking import Chunk, extract_and_chunk
 from core.rag.embeddings import EmbeddingService
 from core.vectorstore.pgvector_store import PgVectorStore
 
@@ -19,7 +16,6 @@ class IngestionError(Exception):
 
 class IngestionService:
     def __init__(self) -> None:
-        self.chunker = SemanticChunker()
         self.embedding_service = EmbeddingService()
         self.vector_store = PgVectorStore()
 
@@ -33,20 +29,26 @@ class IngestionService:
         document.save(update_fields=["status"])
 
         try:
-            text_by_page = self._extract_text(document.file)
-            document.page_count = len(text_by_page)
+            pdf_bytes = self._read_file(document.file)
 
-            chunks = self.chunker.chunk_document(text_by_page, document.title)
+            doc, chunks = extract_and_chunk(
+                pdf_bytes=pdf_bytes,
+                document_title=document.title,
+                filename=document.file.name or "document.pdf",
+            )
+            document.page_count = doc.num_pages()
+
             logger.info(
                 "Chunked document",
                 extra={
                     "document_id": document_id,
                     "chunk_count": len(chunks),
+                    "page_count": document.page_count,
                 },
             )
 
-            texts = [chunk.content for chunk in chunks]
-            embeddings = self.embedding_service.embed_documents(texts)
+            texts_for_embedding = [chunk.content_for_embedding for chunk in chunks]
+            embeddings = self.embedding_service.embed_documents(texts_for_embedding)
 
             embedding_ids = self.vector_store.store_embeddings(
                 chunks=chunks,
@@ -76,30 +78,14 @@ class IngestionService:
             document.save(update_fields=["status", "error_message"])
             raise IngestionError(f"Processing failed: {e}") from e
 
-    def _extract_text(self, file_field) -> dict[int, str]:
-        pages: dict[int, str] = {}
+    def _read_file(self, file_field) -> bytes:
         with file_field.open("rb") as f:
-            pdf_bytes = f.read()
-
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-        try:
-            for page_num in range(len(doc)):
-                page = doc[page_num]
-                text = page.get_text("text")
-                if text.strip():
-                    pages[page_num + 1] = text
-        finally:
-            doc.close()
-
-        if not pages:
-            raise IngestionError("No text content extracted from PDF")
-
-        return pages
+            return f.read()
 
     def _save_chunks(
         self,
         document: Document,
-        chunks: list,
+        chunks: list[Chunk],
         embedding_ids: list[str],
     ) -> None:
         DocumentChunk.objects.filter(document=document).delete()
@@ -110,6 +96,7 @@ class IngestionService:
                 content=chunk.content,
                 chunk_index=idx,
                 section_type=chunk.section_type,
+                content_type=chunk.metadata.get("content_type", "prose"),
                 page_number=chunk.page_number,
                 metadata=chunk.metadata,
                 embedding_id=embedding_ids[idx] if idx < len(embedding_ids) else "",

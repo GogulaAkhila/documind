@@ -75,6 +75,12 @@ class DocumentChunk(models.Model):
         POLICY = "policy", "Policy"
         OTHER = "other", "Other"
 
+    class ContentType(models.TextChoices):
+        PROSE = "prose", "Prose"
+        TABLE = "table", "Table"
+        LIST = "list", "List"
+        CODE = "code", "Code"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     document = models.ForeignKey(
         Document, on_delete=models.CASCADE, related_name="chunks"
@@ -83,6 +89,9 @@ class DocumentChunk(models.Model):
     chunk_index = models.PositiveIntegerField()
     section_type = models.CharField(
         max_length=30, choices=SectionType.choices, default=SectionType.OTHER
+    )
+    content_type = models.CharField(
+        max_length=10, choices=ContentType.choices, default=ContentType.PROSE
     )
     page_number = models.PositiveIntegerField(default=1)
     metadata = models.JSONField(default=dict, blank=True)
