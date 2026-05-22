@@ -18,8 +18,7 @@ langchain-community>=0.3,<0.4
 google-generativeai>=0.8,<1.0
 
 # Document Processing
-PyMuPDF>=1.24,<2.0
-unstructured[pdf]>=0.15,<1.0
+docling>=2.95,<3.0
 
 # Vector Store
 pgvector>=0.3,<1.0

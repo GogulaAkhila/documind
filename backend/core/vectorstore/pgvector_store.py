@@ -8,6 +8,10 @@ from django.conf import settings
 
 from core.rag.chunking import Chunk
 
+# content_for_embedding holds the contextualized text (with heading path prepended)
+# that was used to generate the embedding. FTS indexes this richer text so keyword
+# searches benefit from the heading context, while `content` stays clean for display.
+
 logger = logging.getLogger(__name__)
 
 EMBEDDING_DIMENSION = 768
@@ -20,12 +24,15 @@ CREATE TABLE IF NOT EXISTS document_embeddings (
     document_id UUID NOT NULL,
     chunk_index INTEGER NOT NULL,
     content TEXT NOT NULL,
-    section_type VARCHAR(20) NOT NULL DEFAULT 'other',
+    content_for_embedding TEXT NOT NULL DEFAULT '',
+    section_type VARCHAR(30) NOT NULL DEFAULT 'other',
     page_number INTEGER NOT NULL DEFAULT 1,
     document_title VARCHAR(512) DEFAULT '',
     metadata JSONB DEFAULT '{{}}'::jsonb,
     embedding vector({dimension}),
-    content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED,
+    content_tsv tsvector GENERATED ALWAYS AS (
+        to_tsvector('english', coalesce(content_for_embedding, content))
+    ) STORED,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -35,6 +42,20 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_vector ON document_embeddings
     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 1);
 CREATE INDEX IF NOT EXISTS idx_embeddings_tsv ON document_embeddings USING gin(content_tsv);
 """.format(dimension=EMBEDDING_DIMENSION)
+
+MIGRATE_TABLE_SQL = """
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'document_embeddings'
+        AND column_name = 'content_for_embedding'
+    ) THEN
+        ALTER TABLE document_embeddings
+            ADD COLUMN content_for_embedding TEXT NOT NULL DEFAULT '';
+    END IF;
+END $$;
+"""
 
 
 class VectorStoreError(Exception):
@@ -57,6 +78,7 @@ class PgVectorStore:
             with conn.cursor() as cur:
                 cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
                 cur.execute(CREATE_TABLE_SQL)
+                cur.execute(MIGRATE_TABLE_SQL)
             conn.commit()
             logger.info("Vector store initialized")
         except psycopg2.Error as e:
@@ -90,12 +112,14 @@ class PgVectorStore:
                     for j, (chunk, embedding) in enumerate(zip(batch_chunks, batch_embeddings)):
                         emb_id = str(uuid.uuid4())
                         embedding_ids.append(emb_id)
+                        content_for_emb = getattr(chunk, "content_for_embedding", "") or chunk.content
                         values.append((
                             emb_id,
                             collection_id,
                             document_id,
                             i + j,
                             chunk.content,
+                            content_for_emb,
                             chunk.section_type,
                             chunk.page_number,
                             chunk.metadata.get("document_title", ""),
@@ -106,8 +130,9 @@ class PgVectorStore:
                     insert_sql = """
                         INSERT INTO document_embeddings
                             (id, collection_id, document_id, chunk_index, content,
-                             section_type, page_number, document_title, metadata, embedding)
-                        VALUES (%s, %s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s, %s::vector)
+                             content_for_embedding, section_type, page_number,
+                             document_title, metadata, embedding)
+                        VALUES (%s, %s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s, %s, %s::vector)
                     """
                     psycopg2.extras.execute_batch(cur, insert_sql, values, page_size=BATCH_SIZE)
 

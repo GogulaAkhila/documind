@@ -22,6 +22,8 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
   const startStreaming = useChatStore((s) => s.startStreaming);
   const finishStreaming = useChatStore((s) => s.finishStreaming);
   const setStreamingPhase = useChatStore((s) => s.setStreamingPhase);
+  const suspendSession = useChatStore((s) => s.suspendSession);
+  const restoreSession = useChatStore((s) => s.restoreSession);
   const { isLoading } = useChatMessages(sessionId);
   const sendMessageMutation = useSendMessageREST(sessionId);
   const initialSent = useRef(false);
@@ -29,13 +31,15 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
 
   useEffect(() => {
     setCurrentSession(sessionId);
+    restoreSession(sessionId);
     initialSent.current = false;
     titleUpdated.current = false;
     return () => {
+      suspendSession();
       setCurrentSession(null);
       clearMessages();
     };
-  }, [sessionId, setCurrentSession, clearMessages]);
+  }, [sessionId, setCurrentSession, clearMessages, suspendSession, restoreSession]);
 
   const handleSend = useCallback(
     (content: string) => {

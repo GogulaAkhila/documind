@@ -47,6 +47,7 @@ def document_chunks(db, document) -> list[DocumentChunk]:
             content=content,
             chunk_index=idx,
             section_type=section_type,
+            content_type="prose",
             page_number=idx + 1,
             metadata={"document_title": document.title},
             embedding_id=str(uuid.uuid4()),
