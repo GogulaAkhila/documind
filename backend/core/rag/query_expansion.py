@@ -7,9 +7,8 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
-MODEL = "models/gemini-2.5-flash"
 
-EXPANSION_PROMPT = """Given the following user question about the uploaded documents, generate 3 alternative 
+EXPANSION_PROMPT = """Given the following user question about the uploaded documents, generate {num_variants} alternative 
 formulations of the same question that might help retrieve relevant passages.
 
 Return ONLY a JSON array of strings, no other text. Example: ["question 1", "question 2", "question 3"]
@@ -32,10 +31,10 @@ class QueryExpander:
         try:
             with httpx.Client(timeout=30) as client:
                 resp = client.post(
-                    f"{API_BASE}/{MODEL}:generateContent",
+                    f"{API_BASE}/{settings.RAG_GENERATION_MODEL}:generateContent",
                     params={"key": self._api_key},
                     json={
-                        "contents": [{"role": "user", "parts": [{"text": EXPANSION_PROMPT.format(query=original_query)}]}],
+                        "contents": [{"role": "user", "parts": [{"text": EXPANSION_PROMPT.format(query=original_query, num_variants=settings.RAG_QUERY_EXPANSION_VARIANTS)}]}],
                         "generationConfig": {"temperature": 0.7, "maxOutputTokens": 512},
                     },
                 )
@@ -54,7 +53,7 @@ class QueryExpander:
 
             queries = json.loads(text)
             if isinstance(queries, list) and all(isinstance(q, str) for q in queries):
-                result = [original_query] + queries[:3]
+                result = [original_query] + queries[:settings.RAG_QUERY_EXPANSION_VARIANTS]
                 logger.info("Query expanded", extra={"original": original_query, "expanded_count": len(result)})
                 return result
         except Exception as e:

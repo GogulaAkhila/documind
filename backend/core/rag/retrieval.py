@@ -1,13 +1,12 @@
 import logging
 from dataclasses import dataclass, field
 
+from django.conf import settings
+
 from core.rag.embeddings import EmbeddingService
 from core.vectorstore.pgvector_store import PgVectorStore
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_TOP_K = 20
-RRF_K = 60  # Reciprocal Rank Fusion constant
 
 
 @dataclass
@@ -34,8 +33,9 @@ class HybridRetriever:
         self,
         query_embedding: list[float],
         collection_id: str,
-        top_k: int = DEFAULT_TOP_K,
+        top_k: int | None = None,
     ) -> list[RetrievedChunk]:
+        top_k = top_k or settings.RAG_RETRIEVAL_TOP_K
         try:
             results = self.vector_store.similarity_search(
                 query_embedding=query_embedding,
@@ -62,8 +62,9 @@ class HybridRetriever:
         self,
         query: str,
         collection_id: str,
-        top_k: int = DEFAULT_TOP_K,
+        top_k: int | None = None,
     ) -> list[RetrievedChunk]:
+        top_k = top_k or settings.RAG_RETRIEVAL_TOP_K
         try:
             results = self.vector_store.full_text_search(
                 query=query,
@@ -90,8 +91,9 @@ class HybridRetriever:
         self,
         query: str,
         collection_id: str,
-        top_k: int = DEFAULT_TOP_K,
+        top_k: int | None = None,
     ) -> list[RetrievedChunk]:
+        top_k = top_k or settings.RAG_RETRIEVAL_TOP_K
         query_embedding = self.embedding_service.embed_query(query)
 
         dense_results = self.dense_search(query_embedding, collection_id, top_k)
@@ -99,6 +101,23 @@ class HybridRetriever:
 
         fused = self._reciprocal_rank_fusion(dense_results, sparse_results)
 
+        return fused[:top_k]
+
+    def hybrid_search_with_hyde(
+        self,
+        query: str,
+        hyde_document: str,
+        collection_id: str,
+        top_k: int | None = None,
+    ) -> list[RetrievedChunk]:
+        """Hybrid search using HyDE embedding for dense, original query for sparse."""
+        top_k = top_k or settings.RAG_RETRIEVAL_TOP_K
+        hyde_embedding = self.embedding_service.embed_query(hyde_document)
+
+        dense_results = self.dense_search(hyde_embedding, collection_id, top_k)
+        sparse_results = self.sparse_search(query, collection_id, top_k)
+
+        fused = self._reciprocal_rank_fusion(dense_results, sparse_results)
         return fused[:top_k]
 
     def _reciprocal_rank_fusion(
@@ -109,13 +128,15 @@ class HybridRetriever:
         scores: dict[str, float] = {}
         chunk_map: dict[str, RetrievedChunk] = {}
 
+        rrf_k = settings.RAG_RRF_K
+
         for rank, chunk in enumerate(dense_results):
-            rrf_score = 1.0 / (RRF_K + rank + 1)
+            rrf_score = 1.0 / (rrf_k + rank + 1)
             scores[chunk.chunk_id] = scores.get(chunk.chunk_id, 0.0) + rrf_score
             chunk_map[chunk.chunk_id] = chunk
 
         for rank, chunk in enumerate(sparse_results):
-            rrf_score = 1.0 / (RRF_K + rank + 1)
+            rrf_score = 1.0 / (rrf_k + rank + 1)
             scores[chunk.chunk_id] = scores.get(chunk.chunk_id, 0.0) + rrf_score
             if chunk.chunk_id not in chunk_map:
                 chunk_map[chunk.chunk_id] = chunk

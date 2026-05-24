@@ -158,6 +158,24 @@ SUPABASE_DB_URL = os.environ.get("SUPABASE_DB_URL", "")
 LANGSMITH_API_KEY = os.environ.get("LANGSMITH_API_KEY", "")
 SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
 
+# RAG Pipeline Configuration
+RAG_RETRIEVAL_TOP_K = int(os.environ.get("RAG_RETRIEVAL_TOP_K", "20"))
+RAG_RERANK_TOP_K = int(os.environ.get("RAG_RERANK_TOP_K", "5"))
+RAG_RRF_K = int(os.environ.get("RAG_RRF_K", "60"))
+RAG_QUERY_EXPANSION_VARIANTS = int(os.environ.get("RAG_QUERY_EXPANSION_VARIANTS", "3"))
+RAG_CONFIDENCE_HIGH_THRESHOLD = float(os.environ.get("RAG_CONFIDENCE_HIGH_THRESHOLD", "0.5"))
+RAG_CONFIDENCE_LOW_THRESHOLD = float(os.environ.get("RAG_CONFIDENCE_LOW_THRESHOLD", "0.25"))
+RAG_DEDUP_SIMILARITY_THRESHOLD = float(os.environ.get("RAG_DEDUP_SIMILARITY_THRESHOLD", "0.95"))
+RAG_HYDE_ENABLED = os.environ.get("RAG_HYDE_ENABLED", "true").lower() == "true"
+RAG_HYDE_MIN_QUERY_WORDS = int(os.environ.get("RAG_HYDE_MIN_QUERY_WORDS", "5"))
+RAG_SEMANTIC_CACHE_ENABLED = os.environ.get("RAG_SEMANTIC_CACHE_ENABLED", "true").lower() == "true"
+RAG_SEMANTIC_CACHE_THRESHOLD = float(os.environ.get("RAG_SEMANTIC_CACHE_THRESHOLD", "0.92"))
+RAG_SEMANTIC_CACHE_TTL = int(os.environ.get("RAG_SEMANTIC_CACHE_TTL", "3600"))
+RAG_CONTEXT_BUDGET_TOKENS = int(os.environ.get("RAG_CONTEXT_BUDGET_TOKENS", "4000"))
+RAG_GENERATION_MODEL = os.environ.get("RAG_GENERATION_MODEL", "models/gemini-2.5-flash")
+RAG_EMBEDDING_MODEL = os.environ.get("RAG_EMBEDDING_MODEL", "models/gemini-embedding-001")
+RAG_RERANKER_MODEL = os.environ.get("RAG_RERANKER_MODEL", "jina-reranker-v2-base-multilingual")
+
 # Logging
 LOGGING = {
     "version": 1,

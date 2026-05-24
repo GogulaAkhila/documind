@@ -6,7 +6,6 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = "models/gemini-embedding-001"
 GEMINI_DIMENSION = 768
 BATCH_SIZE = 100
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
@@ -32,9 +31,10 @@ class EmbeddingService:
         self._use_local = True
 
     def _gemini_embed_batch(self, texts: list[str]) -> list[list[float]]:
+        model = settings.RAG_EMBEDDING_MODEL
         requests = [
             {
-                "model": GEMINI_MODEL,
+                "model": model,
                 "content": {"parts": [{"text": t}]},
                 "outputDimensionality": GEMINI_DIMENSION,
             }
@@ -42,7 +42,7 @@ class EmbeddingService:
         ]
         with httpx.Client(timeout=60) as client:
             resp = client.post(
-                f"{API_BASE}/{GEMINI_MODEL}:batchEmbedContents",
+                f"{API_BASE}/{model}:batchEmbedContents",
                 params={"key": self._api_key},
                 json={"requests": requests},
             )
@@ -55,12 +55,13 @@ class EmbeddingService:
         return [e["values"] for e in resp.json()["embeddings"]]
 
     def _gemini_embed_single(self, text: str) -> list[float]:
+        model = settings.RAG_EMBEDDING_MODEL
         with httpx.Client(timeout=60) as client:
             resp = client.post(
-                f"{API_BASE}/{GEMINI_MODEL}:embedContent",
+                f"{API_BASE}/{model}:embedContent",
                 params={"key": self._api_key},
                 json={
-                    "model": GEMINI_MODEL,
+                    "model": model,
                     "content": {"parts": [{"text": text}]},
                     "outputDimensionality": GEMINI_DIMENSION,
                 },

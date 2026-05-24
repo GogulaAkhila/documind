@@ -15,19 +15,22 @@ A full-stack Retrieval-Augmented Generation pipeline enabling cross-document Q&A
 │                                                               │
 │  ┌──────────────────── RAG Pipeline ──────────────────────┐  │
 │  │                                                         │  │
-│  │  Query Expansion ──► Hybrid Retrieval ──► Jina Rerank  │  │
-│  │    (Gemini 2.5       (Dense + BM25/FTS)    (top 20→5)  │  │
-│  │     Flash)                  │                           │  │
-│  │                    ┌────────▼───────┐                   │  │
-│  │                    │  Generation    │                   │  │
-│  │                    │  (Gemini 2.5   │                   │  │
-│  │                    │   Flash)       │                   │  │
-│  │                    └────────┬───────┘                   │  │
-│  │                             │                           │  │
-│  │                  Hallucination Guardrail                │  │
+│  │  Query Classify ──► Semantic Cache ──► Query Expansion  │  │
+│  │       │                                    │            │  │
+│  │       ▼ (short/vague?)              Adaptive HyDE       │  │
+│  │                                           │             │  │
+│  │  Hybrid Retrieval (Dense + BM25/FTS + RRF)              │  │
+│  │       │                                                 │  │
+│  │  Dedup (ID + Semantic) ──► Jina Rerank (fallback: RRF)  │  │
+│  │       │                                                 │  │
+│  │  Confidence Gate (HIGH/MEDIUM/LOW)                      │  │
+│  │       │                                                 │  │
+│  │  Context Budget ──► Generation (Gemini 2.5 Flash)       │  │
+│  │       │                                                 │  │
+│  │  Guardrail (annotate) ──► Pipeline Tracing              │  │
 │  └─────────────────────────────────────────────────────────┘  │
 │                                                               │
-│  Celery Workers ──► Document Ingestion (PyMuPDF + Chunking)  │
+│  Celery Workers ──► Document Ingestion (Docling + Chunking)  │
 │  RAGAS Eval     ──► Faithfulness, Relevance, Precision       │
 └──────────────┬────────────────────────────┬──────────────────┘
                │                            │
@@ -49,20 +52,40 @@ A full-stack Retrieval-Augmented Generation pipeline enabling cross-document Q&A
 | **Embeddings** | Google Gemini Embedding 001 (768 dims) with sentence-transformers fallback |
 | **Vector DB** | Supabase PostgreSQL + pgvector (IVFFlat index) |
 | **Re-ranker** | Jina Reranker v2 |
-| **PDF Parsing** | PyMuPDF (fitz) — handles any PDF document type (research papers, SOPs, manuals, reports) |
+| **PDF Parsing** | Docling 2.95 (pypdfium2 backend) — layout-aware extraction + HybridChunker |
 | **Evaluation** | RAGAS (faithfulness, relevance, context precision) |
 | **Task Queue** | Celery + Redis (Upstash) |
-| **Observability** | Sentry, LangSmith (optional) |
+| **Observability** | Pipeline tracing (per-stage latency), Sentry, LangSmith (optional) |
 | **Deployment** | Vercel (frontend), Render (backend) |
 
 ## Key Features
 
-- **Semantic Chunking** — Splits documents by detected sections (academic, enterprise, technical) rather than arbitrary token counts
-- **Hybrid Retrieval** — Dense vector search (pgvector cosine similarity) + PostgreSQL full-text search (tsvector) with reciprocal rank fusion
-- **Re-ranking** — Jina Reranker v2 narrows top 20 → top 5 most relevant passages
+### Document Processing
+- **Docling-Powered Extraction** — Layout-aware PDF parsing with table structure detection, heading hierarchy, and section classification
+- **HybridChunker** — Hierarchical + token-aware chunking (512 max tokens) with table header repetition and peer merging
+- **Dual Content Storage** — `content_for_embedding` (contextualized with heading path) + `content` (clean for display)
+
+### Retrieval Pipeline
+- **Hybrid Retrieval** — Dense vector search (pgvector cosine) + PostgreSQL full-text search (tsvector) with reciprocal rank fusion (RRF k=60)
+- **Multi-Query Expansion** — User question → up to 3 reformulated queries via Gemini → merged retrieval for better recall
+- **Adaptive HyDE** — For short/vague queries, generates a hypothetical answer and embeds that for dense search (15-20% recall improvement)
+- **Query Classification** — Rule-based classifier (factual/short_vague/comparison/multi_hop/general) drives adaptive retrieval strategies
+- **Near-Duplicate Deduplication** — ID-based + semantic cosine similarity dedup removes redundant chunks before reranking
+- **Re-ranking with Fallback** — Jina Reranker v2 (top 20 → top 5) with graceful fallback to RRF ordering on API failure
+- **Confidence Gating** — 3-state retrieval quality scoring: HIGH → answer, MEDIUM → answer with caveat, LOW → abstain ("I don't know")
+- **Context Budget** — Token-limited chunk selection (configurable, default 4000 tokens) prevents context window overflow
+
+### Generation & Safety
 - **Inline Citations** — Every answer cites `[Document Title, Page X]` with references
-- **Multi-Query Expansion** — User question → 3 reformulated queries via Gemini → merged retrieval for better recall
-- **Hallucination Guardrail** — Post-generation verification that claims are grounded in retrieved context
+- **Confidence-Aware Generation** — MEDIUM confidence prompts the LLM to preface answers with uncertainty caveats
+- **Hallucination Guardrail (Annotate Mode)** — Post-generation grounding check returns confidence level and flagged ungrounded claims
+
+### Performance & Observability
+- **Semantic Query Cache** — Two-tier cache (exact hash + cosine similarity) skips the full pipeline for repeat queries; auto-invalidates on document changes
+- **Pipeline Tracing** — Per-stage latency and metadata logging (cache, expansion, HyDE, retrieval, dedup, reranking, generation, guardrail)
+- **Configurable Pipeline** — All 16 RAG parameters exposed as Django settings with env-var overrides
+
+### Other
 - **Evaluation Dashboard** — RAGAS metrics (faithfulness, answer relevance, context precision)
 - **Embedding Fallback** — Automatically falls back to local sentence-transformers model if Gemini API is unavailable
 - **Any Document Type** — Supports research papers, technical documentation, SOPs, HR handbooks, compliance manuals, and any PDF-based content
@@ -124,11 +147,11 @@ python manage.py migrate
 daphne -b 0.0.0.0 -p 8000 config.asgi:application
 
 # In a separate terminal — start Celery worker
-# macOS requires --pool=solo to avoid native library crashes (PyMuPDF)
+# macOS requires --pool=solo to avoid native library crashes (Docling/pypdfium2)
 OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES celery -A config.celery worker -l info --pool=solo
 ```
 
-> **macOS Note:** The default Celery `prefork` pool causes SIGSEGV crashes with PyMuPDF's native C libraries. Always use `--pool=solo` on macOS for development.
+> **macOS Note:** The default Celery `prefork` pool causes SIGSEGV crashes with Docling's native libraries (pypdfium2). Always use `--pool=solo` on macOS for development.
 
 > **Shell Environment Note:** If `GEMINI_API_KEY` is set in your shell environment, it overrides the `.env` file. Use `unset GEMINI_API_KEY` before starting Daphne/Celery if you manage keys via `.env`.
 
@@ -177,13 +200,18 @@ documind/
 │   │   └── evaluation/        # RAGAS evaluation runs and questions
 │   ├── core/
 │   │   ├── rag/               # RAG pipeline modules
-│   │   │   ├── chunking.py        # Semantic section-based chunker
+│   │   │   ├── chunking.py        # Docling HybridChunker (layout-aware)
 │   │   │   ├── embeddings.py      # Gemini Embedding 001 + local fallback
-│   │   │   ├── retrieval.py       # Hybrid retriever (dense + full-text + RRF)
-│   │   │   ├── reranker.py        # Jina Reranker v2
+│   │   │   ├── retrieval.py       # Hybrid retriever (dense + FTS + RRF + HyDE)
+│   │   │   ├── reranker.py        # Jina Reranker v2 (with RRF fallback)
 │   │   │   ├── query_expansion.py # Multi-query expansion via Gemini
-│   │   │   ├── generation.py      # Gemini 2.5 Flash answer generation
-│   │   │   ├── guardrails.py      # Hallucination grounding check
+│   │   │   ├── query_classifier.py# Rule-based query type classification
+│   │   │   ├── hyde.py            # Hypothetical Document Embeddings
+│   │   │   ├── confidence.py      # 3-state retrieval confidence scoring
+│   │   │   ├── semantic_cache.py  # Two-tier semantic query cache
+│   │   │   ├── tracing.py         # Per-stage pipeline observability
+│   │   │   ├── generation.py      # Gemini 2.5 Flash (confidence-aware)
+│   │   │   ├── guardrails.py      # Hallucination guardrail (annotate mode)
 │   │   │   └── pipeline.py        # Main RAG orchestrator
 │   │   ├── vectorstore/       # Supabase pgvector operations
 │   │   └── utils/             # Citation extraction utilities
@@ -224,7 +252,7 @@ curl -X POST http://localhost:8000/api/v1/chat/messages/ \
   -d '{"session": "<session-uuid>", "content": "What is the Transformer architecture?"}'
 ```
 
-**Response** includes the RAG-generated answer with inline citations:
+**Response** includes the RAG-generated answer with inline citations and retrieval metadata:
 ```json
 {
   "id": "uuid",
@@ -232,6 +260,10 @@ curl -X POST http://localhost:8000/api/v1/chat/messages/ \
   "role": "assistant",
   "content": "The Transformer is a model architecture eschewing recurrence and instead relying entirely on an attention mechanism [Attention Is All You Need, Page 2]...",
   "sources": [{"document_title": "...", "page_number": 2, "section_type": "abstract"}],
+  "confidence_level": "high",
+  "retrieval_score": 0.72,
+  "flagged_claims": [],
+  "query_type": "factual",
   "created_at": "2026-05-17T..."
 }
 ```
@@ -242,39 +274,89 @@ curl -X POST http://localhost:8000/api/v1/chat/messages/ \
 User Question
      │
      ▼
-Query Expansion (Gemini 2.5 Flash)
-  → original + 3 reformulated queries
+Query Classification (rule-based, sub-ms)
+  → factual / short_vague / comparison / multi_hop / general
      │
      ▼
-Hybrid Retrieval (for each query)
-  → Dense search: pgvector cosine similarity (Gemini embeddings, 768 dims)
-  → Sparse search: PostgreSQL tsvector full-text search
-  → Reciprocal Rank Fusion to merge results
+Semantic Cache Lookup (exact hash + cosine similarity)
+  → HIT? Return cached answer immediately
+  → MISS? Continue pipeline ▼
+     │
+     ▼
+Query Expansion (Gemini 2.5 Flash)
+  → original + up to 3 reformulated queries
+     │
+     ▼
+Adaptive HyDE (for short/vague queries only)
+  → Generate hypothetical answer paragraph
+  → Embed that instead of raw query for dense search
+     │
+     ▼
+Hybrid Retrieval (for each expanded query)
+  → Dense: pgvector cosine similarity (Gemini embeddings, 768 dims)
+  → Sparse: PostgreSQL tsvector full-text search
+  → Reciprocal Rank Fusion (k=60) to merge results
      │
      ▼
 Deduplication
+  → ID-based (exact chunk_id match)
+  → Semantic (cosine similarity ≥ 0.95 → remove near-duplicates)
      │
      ▼
 Jina Reranker v2 (top 20 → top 5)
+  → Fallback: RRF ordering if Jina API unavailable
+     │
+     ▼
+Confidence Gating (3-state)
+  → HIGH (top_score ≥ 0.5): proceed normally
+  → MEDIUM (top_score ≥ 0.25): answer with uncertainty caveat
+  → LOW (top_score < 0.25): abstain — "I don't have enough information"
+     │
+     ▼
+Context Budget (token-limited chunk selection)
      │
      ▼
 Answer Generation (Gemini 2.5 Flash)
-  → System prompt enforces citation format [Document Title, Page X]
+  → Confidence-aware prompting (MEDIUM adds caveat instruction)
+  → Citation format: [Document Title, Page X]
      │
      ▼
-Hallucination Guardrail (Gemini 2.5 Flash)
-  → Verifies each claim is grounded in retrieved context
+Hallucination Guardrail — Annotate Mode
+  → Returns confidence level + flagged ungrounded claims
      │
      ▼
-Response with citations
+Cache Store + Pipeline Trace Log
+     │
+     ▼
+Response with citations, confidence, and flagged claims
 ```
+
+## Configuration
+
+All RAG pipeline parameters are configurable via environment variables (defaults shown):
+
+| Variable | Default | Description |
+|---|---|---|
+| `RAG_RETRIEVAL_TOP_K` | 20 | Candidates per retrieval query |
+| `RAG_RERANK_TOP_K` | 5 | Final chunks after reranking |
+| `RAG_RRF_K` | 60 | RRF fusion constant |
+| `RAG_CONFIDENCE_HIGH_THRESHOLD` | 0.5 | Reranker score for HIGH confidence |
+| `RAG_CONFIDENCE_LOW_THRESHOLD` | 0.25 | Below this → abstain |
+| `RAG_DEDUP_SIMILARITY_THRESHOLD` | 0.95 | Cosine sim for near-duplicate removal |
+| `RAG_HYDE_ENABLED` | true | Enable HyDE for short queries |
+| `RAG_HYDE_MIN_QUERY_WORDS` | 5 | Queries shorter than this trigger HyDE |
+| `RAG_SEMANTIC_CACHE_ENABLED` | true | Enable semantic query cache |
+| `RAG_SEMANTIC_CACHE_THRESHOLD` | 0.92 | Cosine sim for cache hit |
+| `RAG_SEMANTIC_CACHE_TTL` | 3600 | Cache TTL in seconds |
+| `RAG_CONTEXT_BUDGET_TOKENS` | 4000 | Max tokens for context window |
 
 ## Known Issues & Notes
 
 - **Gemini API Key Security:** Google aggressively blocks API keys detected in public code, chat logs, or version control. Never commit `.env` files or share keys in chat. The `.gitignore` excludes `.env` by default.
-- **macOS Celery:** Must use `--pool=solo` flag due to native library (PyMuPDF) incompatibility with the default `prefork` pool.
+- **macOS Celery:** Must use `--pool=solo` flag due to native library (Docling/pypdfium2) incompatibility with the default `prefork` pool.
 - **Upstash Redis TLS:** Upstash uses `rediss://` (TLS). The Celery SSL config is handled automatically in `settings/base.py`.
 - **Embedding Fallback:** If the Gemini API is unavailable, the embedding service falls back to `all-MiniLM-L6-v2` (384 dims). Note that mixing embedding models between ingestion and query time will cause dimension mismatch errors — re-process documents if switching models.
+- **Confidence Thresholds:** Default thresholds (HIGH ≥ 0.5, LOW < 0.25) are conservative starting points. Tune against labeled eval sets per corpus. A healthy abstention rate is 5-15%.
 
 ## License
 
