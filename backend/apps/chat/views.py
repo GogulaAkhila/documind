@@ -77,8 +77,12 @@ class MessageViewSet(viewsets.ModelViewSet):
             sources=result.citations,
         )
 
-        serializer = MessageSerializer(assistant_message)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        data = MessageSerializer(assistant_message).data
+        data["confidence_level"] = result.confidence_level
+        data["retrieval_score"] = result.retrieval_score
+        data["flagged_claims"] = result.flagged_claims
+        data["query_type"] = result.query_type
+        return Response(data, status=status.HTTP_201_CREATED)
 
 
 class MessageFeedbackViewSet(viewsets.ModelViewSet):

@@ -4,12 +4,12 @@ from collections.abc import AsyncIterator
 import httpx
 from django.conf import settings
 
+from core.rag.confidence import ConfidenceLevel
 from core.rag.retrieval import RetrievedChunk
 
 logger = logging.getLogger(__name__)
 
 API_BASE = "https://generativelanguage.googleapis.com/v1beta"
-MODEL = "models/gemini-2.5-flash"
 
 SYSTEM_PROMPT = """You are a document assistant that answers questions based on the provided documents.
 
@@ -37,9 +37,10 @@ class AnswerGenerator:
             raise GenerationError("GEMINI_API_KEY is not configured")
 
     def _call_gemini(self, system: str, user: str) -> str:
+        model = settings.RAG_GENERATION_MODEL
         with httpx.Client(timeout=120) as client:
             resp = client.post(
-                f"{API_BASE}/{MODEL}:generateContent",
+                f"{API_BASE}/{model}:generateContent",
                 params={"key": self._api_key},
                 json={
                     "system_instruction": {"parts": [{"text": system}]},
@@ -57,12 +58,20 @@ class AnswerGenerator:
             raise GenerationError("No response candidates from Gemini")
         return candidates[0]["content"]["parts"][0]["text"]
 
-    def generate(self, query: str, contexts: list[RetrievedChunk]) -> str:
+    def generate(
+        self,
+        query: str,
+        contexts: list[RetrievedChunk],
+        confidence_level: ConfidenceLevel = ConfidenceLevel.HIGH,
+    ) -> str:
         if not contexts:
             return "I don't have enough context to answer this question. Please upload relevant documents first."
 
         context_text = self._format_contexts(contexts)
         system_message = SYSTEM_PROMPT.format(context=context_text)
+
+        if confidence_level == ConfidenceLevel.MEDIUM:
+            system_message += "\n\nIMPORTANT: The retrieved context has moderate relevance to the question. Preface your answer with 'Based on the available information in the documents,' and be explicit about any uncertainty or gaps."
 
         try:
             answer = self._call_gemini(system_message, query)
@@ -84,7 +93,7 @@ class AnswerGenerator:
             async with httpx.AsyncClient(timeout=120) as client:
                 async with client.stream(
                     "POST",
-                    f"{API_BASE}/{MODEL}:streamGenerateContent",
+                    f"{API_BASE}/{settings.RAG_GENERATION_MODEL}:streamGenerateContent",
                     params={"key": self._api_key, "alt": "sse"},
                     json={
                         "system_instruction": {"parts": [{"text": system_message}]},
