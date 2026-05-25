@@ -97,37 +97,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }),
 
   finishStreaming: () => {
-    const { streamingContent, streamingSources, messages, currentSessionId, sessionStreamStates } = get();
+    const { streamingSources, currentSessionId, sessionStreamStates } = get();
     const cleanedStates = { ...sessionStreamStates };
     if (currentSessionId) {
       delete cleanedStates[currentSessionId];
     }
 
-    if (streamingContent) {
-      const assistantMessage: Message = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: streamingContent,
-        sources: streamingSources,
-        created_at: new Date().toISOString(),
-      };
-      set({
-        messages: [...messages, assistantMessage],
-        isStreaming: false,
-        streamingPhase: "idle",
-        streamingContent: "",
-        streamingSources: [],
-        activeSources:
-          streamingSources.length > 0 ? streamingSources : get().activeSources,
-        sessionStreamStates: cleanedStates,
-      });
-    } else {
-      set({
-        isStreaming: false,
-        streamingPhase: "idle",
-        sessionStreamStates: cleanedStates,
-      });
-    }
+    set({
+      isStreaming: false,
+      streamingPhase: "idle",
+      streamingContent: "",
+      streamingSources: [],
+      activeSources:
+        streamingSources.length > 0 ? streamingSources : get().activeSources,
+      sessionStreamStates: cleanedStates,
+    });
   },
 
   setActiveSources: (sources) => set({ activeSources: sources }),
