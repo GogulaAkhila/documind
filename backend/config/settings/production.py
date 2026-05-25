@@ -6,17 +6,30 @@ from sentry_sdk.integrations.django import DjangoIntegration
 
 DEBUG = False
 
-CORS_ALLOWED_ORIGINS = os.environ.get(
-    "CORS_ALLOWED_ORIGINS", "https://documind.app"
+ALLOWED_HOSTS = os.environ.get(
+    "ALLOWED_HOSTS", "localhost"
 ).split(",")
 
-SECURE_SSL_REDIRECT = True
+CORS_ALLOWED_ORIGINS = os.environ.get(
+    "CORS_ALLOWED_ORIGINS", "https://documind.vercel.app"
+).split(",")
+
+CSRF_TRUSTED_ORIGINS = os.environ.get(
+    "CSRF_TRUSTED_ORIGINS", "https://documind.vercel.app"
+).split(",")
+
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
 if SENTRY_DSN:
