@@ -129,8 +129,21 @@ async def message_stream_view(request):
         content=content,
     )
 
+    # Fetch recent chat history for conversational context
+    history = body.get("history", None)
+    if history is None:
+        recent_msgs = await sync_to_async(
+            lambda: list(
+                Message.objects.filter(session=session)
+                .order_by("-created_at")[:12]
+                .values("role", "content")
+            )
+        )()
+        # Reverse to chronological order and exclude the message we just created
+        history = list(reversed(recent_msgs))[:-1] if len(recent_msgs) > 1 else []
+
     response = StreamingHttpResponse(
-        _stream_events(session, content),
+        _stream_events(session, content, history),
         content_type="text/event-stream",
     )
     response["Cache-Control"] = "no-cache"
@@ -138,7 +151,7 @@ async def message_stream_view(request):
     return response
 
 
-async def _stream_events(session, content: str):
+async def _stream_events(session, content: str, chat_history: list[dict] | None = None):
     """Async generator that yields SSE-formatted lines."""
     pipeline = RAGPipeline()
     full_answer = ""
@@ -148,6 +161,7 @@ async def _stream_events(session, content: str):
         async for event in pipeline.query_stream(
             user_query=content,
             collection_id=str(session.collection_id),
+            chat_history=chat_history,
         ):
             event_type = event.get("type", "")
             if event_type == "token":

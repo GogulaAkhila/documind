@@ -1,5 +1,5 @@
 export interface SSEEvent {
-  type: "phase" | "confidence" | "sources" | "token" | "done" | "error" | "message_saved";
+  type: "phase" | "confidence" | "sources" | "token" | "done" | "error" | "message_saved" | "rewritten_query";
   data: unknown;
 }
 
@@ -11,6 +11,12 @@ export interface StreamCallbacks {
   onDone?: (meta: Record<string, unknown>) => void;
   onError?: (message: string) => void;
   onMessageSaved?: (data: { id: string }) => void;
+  onRewrittenQuery?: (query: string) => void;
+}
+
+export interface ChatHistoryMessage {
+  role: string;
+  content: string;
 }
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
@@ -20,11 +26,17 @@ export async function streamMessage(
   content: string,
   callbacks: StreamCallbacks,
   signal?: AbortSignal,
+  chatHistory?: ChatHistoryMessage[],
 ): Promise<void> {
+  const body: Record<string, unknown> = { session: sessionId, content };
+  if (chatHistory && chatHistory.length > 0) {
+    body.history = chatHistory;
+  }
+
   const response = await fetch(`${API_BASE}/chat/messages/stream/`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session: sessionId, content }),
+    body: JSON.stringify(body),
     signal,
   });
 
@@ -98,6 +110,9 @@ function dispatchEvent(event: SSEEvent, callbacks: StreamCallbacks): void {
       break;
     case "message_saved":
       callbacks.onMessageSaved?.(event.data as { id: string });
+      break;
+    case "rewritten_query":
+      callbacks.onRewrittenQuery?.(event.data as string);
       break;
   }
 }

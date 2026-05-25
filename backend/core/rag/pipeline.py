@@ -10,8 +10,9 @@ from core.rag.confidence import ConfidenceLevel, score_retrieval_confidence
 from core.rag.generation import AnswerGenerator
 from core.rag.guardrails import GroundingResult, HallucinationGuardrail
 from core.rag.hyde import HyDEGenerator
-from core.rag.query_classifier import QueryType, classify_query
+from core.rag.query_classifier import QueryType, classify_query, _get_greeting_response
 from core.rag.query_expansion import QueryExpander
+from core.rag.query_rewriter import needs_rewriting, rewrite_with_history
 from core.rag.reranker import JinaReranker
 from core.rag.retrieval import HybridRetriever, RetrievedChunk
 from core.rag.semantic_cache import SemanticCache
@@ -220,12 +221,14 @@ class RAGPipeline:
         self,
         user_query: str,
         collection_id: str,
+        chat_history: list[dict] | None = None,
         retrieval_top_k: int | None = None,
         rerank_top_k: int | None = None,
     ) -> AsyncIterator[dict]:
         """Stream pipeline: runs retrieval synchronously, then streams generation tokens."""
         retrieval_top_k = retrieval_top_k or settings.RAG_RETRIEVAL_TOP_K
         rerank_top_k = rerank_top_k or settings.RAG_RERANK_TOP_K
+        chat_history = chat_history or []
 
         if not user_query.strip():
             raise PipelineError("Query cannot be empty")
@@ -235,12 +238,45 @@ class RAGPipeline:
 
         query_type = classify_query(user_query)
 
+        # Short-circuit for greetings/chitchat — skip the entire RAG pipeline
+        if query_type == QueryType.GREETING:
+            trace.finish()
+            greeting = _get_greeting_response(user_query.lower().strip())
+            yield {"type": "phase", "data": "generating"}
+            yield {"type": "token", "data": greeting}
+            yield {
+                "type": "done",
+                "data": {
+                    "citations": [],
+                    "query_type": "greeting",
+                    "confidence_level": "high",
+                    "retrieval_score": 1.0,
+                },
+            }
+            return
+
+        # Conversational query rewriting for follow-ups
+        rewritten_query = user_query
+        with trace.stage("query_rewrite") as meta:
+            if needs_rewriting(user_query, chat_history):
+                rewritten_query = rewrite_with_history(user_query, chat_history)
+                meta["rewritten"] = True
+                meta["original"] = user_query[:100]
+                meta["result"] = rewritten_query[:100]
+            else:
+                meta["rewritten"] = False
+
+        if rewritten_query != user_query:
+            yield {"type": "rewritten_query", "data": rewritten_query}
+            query_type = classify_query(rewritten_query)
+
         yield {"type": "phase", "data": "searching"}
 
-        # Cache check
+        # Cache check (use rewritten query for lookup)
+        retrieval_query = rewritten_query
         with trace.stage("cache_lookup") as meta:
-            query_embedding = self.retriever.embedding_service.embed_query(user_query)
-            cached = self.semantic_cache.lookup(user_query, query_embedding, collection_id)
+            query_embedding = self.retriever.embedding_service.embed_query(retrieval_query)
+            cached = self.semantic_cache.lookup(retrieval_query, query_embedding, collection_id)
             meta["hit"] = cached is not None
 
         if cached:
@@ -262,23 +298,23 @@ class RAGPipeline:
             }
             return
 
-        # Query expansion
+        # Query expansion (use rewritten query)
         with trace.stage("expansion") as meta:
-            expanded_queries = self.query_expander.expand(user_query)
+            expanded_queries = self.query_expander.expand(retrieval_query)
             meta["queries_generated"] = len(expanded_queries)
 
         # HyDE for short/vague queries
         hyde_document = None
         if settings.RAG_HYDE_ENABLED and query_type == QueryType.SHORT_VAGUE:
             with trace.stage("hyde") as meta:
-                hyde_document = self.hyde_generator.generate_hypothetical_document(user_query)
+                hyde_document = self.hyde_generator.generate_hypothetical_document(retrieval_query)
                 meta["generated"] = hyde_document is not None
 
         # Retrieval
         with trace.stage("retrieval") as meta:
             all_chunks: list[RetrievedChunk] = []
             for q in expanded_queries:
-                if hyde_document and q == user_query:
+                if hyde_document and q == retrieval_query:
                     chunks = self.retriever.hybrid_search_with_hyde(
                         query=q, hyde_document=hyde_document,
                         collection_id=collection_id, top_k=retrieval_top_k,
@@ -299,10 +335,10 @@ class RAGPipeline:
 
         yield {"type": "phase", "data": "reranking"}
 
-        # Reranking
+        # Reranking (use rewritten query for relevance scoring)
         with trace.stage("reranking") as meta:
             reranked = self.reranker.rerank(
-                query=user_query, documents=deduplicated, top_k=rerank_top_k,
+                query=retrieval_query, documents=deduplicated, top_k=rerank_top_k,
             )
             meta["output_count"] = len(reranked)
             if reranked:
@@ -350,10 +386,10 @@ class RAGPipeline:
 
         yield {"type": "phase", "data": "generating"}
 
-        # Stream generation tokens
+        # Stream generation tokens (use rewritten query for better generation)
         full_answer = ""
         async for token in self.generator.generate_stream(
-            query=user_query, contexts=budgeted, confidence_level=confidence.level,
+            query=retrieval_query, contexts=budgeted, confidence_level=confidence.level,
         ):
             full_answer += token
             yield {"type": "token", "data": token}
@@ -369,9 +405,9 @@ class RAGPipeline:
         flagged = grounding.flagged_claims if not grounding.is_grounded else []
         citations = extract_citations(full_answer, budgeted)
 
-        # Cache the result
+        # Cache the result (keyed on rewritten query for better cache hits)
         self.semantic_cache.store(
-            query=user_query,
+            query=retrieval_query,
             query_embedding=query_embedding,
             collection_id=collection_id,
             answer=full_answer,

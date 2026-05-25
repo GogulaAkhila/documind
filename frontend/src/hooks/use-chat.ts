@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
-import { streamMessage } from "@/lib/sse-stream";
+import { streamMessage, type ChatHistoryMessage } from "@/lib/sse-stream";
 import { WebSocketManager } from "@/lib/websocket";
 import { useChatStore } from "@/stores/chat-store";
 import type { StreamingPhase } from "@/stores/chat-store";
@@ -183,6 +183,13 @@ export function useSendMessageStream(sessionId: string) {
       addMessage(userMessage);
       startStreaming();
 
+      // Build chat history from current messages for conversational context
+      const currentMessages = useChatStore.getState().messages;
+      const history: ChatHistoryMessage[] = currentMessages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .slice(-10)
+        .map((m) => ({ role: m.role, content: m.content }));
+
       await streamMessage(sessionId, content, {
         onPhase: (phase) => {
           const mapped = PHASE_MAP[phase];
@@ -222,7 +229,7 @@ export function useSendMessageStream(sessionId: string) {
         onMessageSaved: () => {
           queryClient.invalidateQueries({ queryKey: sessionMessagesKey(sessionId) });
         },
-      }, controller.signal);
+      }, controller.signal, history);
     },
     [sessionId, addToken, setStreamingSources, startStreaming, finishStreaming, setStreamingPhase, addMessage, queryClient],
   );
