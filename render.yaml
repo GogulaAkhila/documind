@@ -1,0 +1,64 @@
+services:
+  # Django API server (Daphne ASGI)
+  - type: web
+    name: documind-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    healthCheckPath: /api/v1/documents/collections/
+    envVars:
+      - key: DJANGO_ENV
+        value: production
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: PORT
+        value: "8000"
+      - fromGroup: documind-secrets
+    disk:
+      name: media-storage
+      mountPath: /app/media
+      sizeGB: 1
+
+  # Celery worker for document processing
+  - type: worker
+    name: documind-celery
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    dockerCommand: celery -A config.celery worker -l info --pool=solo
+    envVars:
+      - key: DJANGO_ENV
+        value: production
+      - key: DJANGO_SECRET_KEY
+        sync: false
+      - fromGroup: documind-secrets
+
+envVarGroups:
+  - name: documind-secrets
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: JINA_API_KEY
+        sync: false
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: LANGSMITH_API_KEY
+        sync: false
