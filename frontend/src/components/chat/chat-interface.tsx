@@ -3,10 +3,9 @@ import { useLocation, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { MessageList } from "./message-list";
 import { ChatInput } from "./chat-input";
-import { useChatMessages, useSendMessageREST, updateSessionTitle } from "@/hooks/use-chat";
+import { useChatMessages, useSendMessageStream, updateSessionTitle } from "@/hooks/use-chat";
 import { useChatStore } from "@/stores/chat-store";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { Message } from "@/types";
 
 interface ChatInterfaceProps {
   sessionId: string;
@@ -18,14 +17,11 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
   const queryClient = useQueryClient();
   const setCurrentSession = useChatStore((s) => s.setCurrentSession);
   const clearMessages = useChatStore((s) => s.clearMessages);
-  const addMessage = useChatStore((s) => s.addMessage);
-  const startStreaming = useChatStore((s) => s.startStreaming);
-  const finishStreaming = useChatStore((s) => s.finishStreaming);
-  const setStreamingPhase = useChatStore((s) => s.setStreamingPhase);
+  const isStreaming = useChatStore((s) => s.isStreaming);
   const suspendSession = useChatStore((s) => s.suspendSession);
   const restoreSession = useChatStore((s) => s.restoreSession);
   const { isLoading } = useChatMessages(sessionId);
-  const sendMessageMutation = useSendMessageREST(sessionId);
+  const { send: streamSend, stop: streamStop } = useSendMessageStream(sessionId);
   const initialSent = useRef(false);
   const titleUpdated = useRef(false);
 
@@ -43,23 +39,9 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
 
   const handleSend = useCallback(
     (content: string) => {
-      const userMessage: Message = {
-        id: crypto.randomUUID(),
-        role: "user",
-        content,
-        sources: [],
-        created_at: new Date().toISOString(),
-      };
-      addMessage(userMessage);
-      startStreaming();
-
-      // Simulate phase progression (since REST doesn't give real-time phases)
-      setTimeout(() => setStreamingPhase("reranking"), 800);
-      setTimeout(() => setStreamingPhase("generating"), 1600);
-
       const isFirstMessage =
         !titleUpdated.current &&
-        useChatStore.getState().messages.filter((m) => m.role === "user").length <= 1;
+        useChatStore.getState().messages.filter((m) => m.role === "user").length === 0;
 
       if (isFirstMessage) {
         titleUpdated.current = true;
@@ -75,22 +57,10 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
           .catch(() => {});
       }
 
-      sendMessageMutation.mutate(content, {
-        onSuccess: (assistantMessage) => {
-          addMessage(assistantMessage);
-          finishStreaming();
-        },
-        onError: () => {
-          finishStreaming();
-        },
-      });
+      streamSend(content);
     },
-    [addMessage, startStreaming, finishStreaming, setStreamingPhase, sendMessageMutation, sessionId, collectionId, queryClient],
+    [streamSend, sessionId, collectionId, queryClient],
   );
-
-  const handleStop = useCallback(() => {
-    finishStreaming();
-  }, [finishStreaming]);
 
   useEffect(() => {
     const initial = (location.state as any)?.initialMessage;
@@ -121,8 +91,8 @@ export function ChatInterface({ sessionId }: ChatInterfaceProps) {
       <MessageList />
       <ChatInput
         onSend={handleSend}
-        onStop={handleStop}
-        disabled={sendMessageMutation.isPending}
+        onStop={streamStop}
+        disabled={isStreaming}
       />
     </div>
   );

@@ -36,6 +36,10 @@ export interface Message {
   content: string;
   sources: Citation[];
   created_at: string;
+  confidence_level?: string;
+  retrieval_score?: number;
+  flagged_claims?: string[];
+  query_type?: string;
 }
 
 export interface ChatSession {

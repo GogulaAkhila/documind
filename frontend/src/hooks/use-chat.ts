@@ -1,9 +1,11 @@
-import { useEffect, useRef, useCallback, useMemo } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
+import { streamMessage } from "@/lib/sse-stream";
 import { WebSocketManager } from "@/lib/websocket";
 import { useChatStore } from "@/stores/chat-store";
-import type { ChatSession, Message, PaginatedResponse, WebSocketMessage } from "@/types";
+import type { StreamingPhase } from "@/stores/chat-store";
+import type { ChatSession, Citation, Message, PaginatedResponse, WebSocketMessage } from "@/types";
 
 function sessionsKey(collectionId: string) {
   return ["chat-sessions", collectionId] as const;
@@ -145,6 +147,93 @@ export function useSendMessageREST(sessionId: string) {
       queryClient.invalidateQueries({ queryKey: sessionMessagesKey(sessionId) });
     },
   });
+}
+
+const PHASE_MAP: Record<string, StreamingPhase> = {
+  searching: "searching",
+  reranking: "reranking",
+  generating: "generating",
+};
+
+export function useSendMessageStream(sessionId: string) {
+  const queryClient = useQueryClient();
+  const abortRef = useRef<AbortController | null>(null);
+  const {
+    addToken,
+    setStreamingSources,
+    startStreaming,
+    finishStreaming,
+    setStreamingPhase,
+    addMessage,
+  } = useChatStore();
+
+  const send = useCallback(
+    async (content: string) => {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      const userMessage: Message = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content,
+        sources: [],
+        created_at: new Date().toISOString(),
+      };
+      addMessage(userMessage);
+      startStreaming();
+
+      await streamMessage(sessionId, content, {
+        onPhase: (phase) => {
+          const mapped = PHASE_MAP[phase];
+          if (mapped) setStreamingPhase(mapped);
+        },
+        onSources: (sources) => {
+          setStreamingSources(sources as Citation[]);
+        },
+        onToken: (token) => {
+          addToken(token);
+        },
+        onDone: (meta) => {
+          const citations = (meta.citations ?? []) as Citation[];
+          const streamContent = useChatStore.getState().streamingContent;
+
+          if (streamContent) {
+            const assistantMessage: Message = {
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: streamContent,
+              sources: citations,
+              created_at: new Date().toISOString(),
+              confidence_level: meta.confidence_level as string,
+              retrieval_score: meta.retrieval_score as number,
+              flagged_claims: meta.flagged_claims as string[],
+              query_type: meta.query_type as string,
+            };
+            addMessage(assistantMessage);
+          }
+          finishStreaming();
+          queryClient.invalidateQueries({ queryKey: sessionMessagesKey(sessionId) });
+        },
+        onError: (msg) => {
+          console.error("Stream error:", msg);
+          finishStreaming();
+        },
+        onMessageSaved: () => {
+          queryClient.invalidateQueries({ queryKey: sessionMessagesKey(sessionId) });
+        },
+      }, controller.signal);
+    },
+    [sessionId, addToken, setStreamingSources, startStreaming, finishStreaming, setStreamingPhase, addMessage, queryClient],
+  );
+
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    finishStreaming();
+  }, [finishStreaming]);
+
+  return { send, stop };
 }
 
 export function updateSessionTitle(sessionId: string, title: string) {

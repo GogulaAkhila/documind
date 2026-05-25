@@ -81,7 +81,12 @@ class AnswerGenerator:
             logger.error("Generation failed", extra={"error": str(e)})
             raise GenerationError(f"Failed to generate answer: {e}") from e
 
-    async def generate_stream(self, query: str, contexts: list[RetrievedChunk]) -> AsyncIterator[str]:
+    async def generate_stream(
+        self,
+        query: str,
+        contexts: list[RetrievedChunk],
+        confidence_level: ConfidenceLevel = ConfidenceLevel.HIGH,
+    ) -> AsyncIterator[str]:
         if not contexts:
             yield "I don't have enough context to answer this question. Please upload relevant documents first."
             return
@@ -89,7 +94,12 @@ class AnswerGenerator:
         context_text = self._format_contexts(contexts)
         system_message = SYSTEM_PROMPT.format(context=context_text)
 
+        if confidence_level == ConfidenceLevel.MEDIUM:
+            system_message += "\n\nIMPORTANT: The retrieved context has moderate relevance to the question. Preface your answer with 'Based on the available information in the documents,' and be explicit about any uncertainty or gaps."
+
         try:
+            import json as _json
+
             async with httpx.AsyncClient(timeout=120) as client:
                 async with client.stream(
                     "POST",
@@ -104,10 +114,9 @@ class AnswerGenerator:
                         },
                     },
                 ) as resp:
-                    import json
                     async for line in resp.aiter_lines():
                         if line.startswith("data: "):
-                            data = json.loads(line[6:])
+                            data = _json.loads(line[6:])
                             candidates = data.get("candidates", [])
                             if candidates:
                                 parts = candidates[0].get("content", {}).get("parts", [])
