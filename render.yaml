@@ -1,5 +1,5 @@
 services:
-  # Django API server (Daphne ASGI)
+  # Django API server (Daphne ASGI) + Celery worker in same container
   - type: web
     name: documind-api
     runtime: docker
@@ -19,21 +19,6 @@ services:
       name: media-storage
       mountPath: /app/media
       sizeGB: 1
-
-  # Celery worker for document processing
-  - type: worker
-    name: documind-celery
-    runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
-    plan: starter
-    dockerCommand: celery -A config.celery worker -l info --pool=solo
-    envVars:
-      - key: DJANGO_ENV
-        value: production
-      - key: DJANGO_SECRET_KEY
-        sync: false
-      - fromGroup: documind-secrets
 
 envVarGroups:
   - name: documind-secrets
