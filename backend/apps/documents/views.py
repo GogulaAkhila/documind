@@ -1,3 +1,4 @@
+import base64
 import logging
 
 from django_filters.rest_framework import DjangoFilterBackend
@@ -27,14 +28,19 @@ class DocumentViewSet(viewsets.ModelViewSet):
     ordering_fields = ["uploaded_at", "title"]
 
     def perform_create(self, serializer) -> None:
+        uploaded_file = serializer.validated_data["file"]
+        pdf_bytes = uploaded_file.read()
+        uploaded_file.seek(0)
+
         document = serializer.save(
-            file_type=self._extract_file_type(serializer.validated_data["file"])
+            file_type=self._extract_file_type(uploaded_file)
         )
         logger.info(
             "Document uploaded, queuing processing",
             extra={"document_id": str(document.id)},
         )
-        process_document_task.delay(str(document.id))
+        pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
+        process_document_task.delay(str(document.id), pdf_b64=pdf_b64)
 
     def _extract_file_type(self, file) -> str:
         name = file.name.lower()

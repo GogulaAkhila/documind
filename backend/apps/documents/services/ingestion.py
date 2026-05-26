@@ -19,7 +19,7 @@ class IngestionService:
         self.embedding_service = EmbeddingService()
         self.vector_store = PgVectorStore()
 
-    def process_document(self, document_id: str) -> None:
+    def process_document(self, document_id: str, pdf_bytes: bytes | None = None) -> None:
         try:
             document = Document.objects.get(id=document_id)
         except Document.DoesNotExist as e:
@@ -29,7 +29,8 @@ class IngestionService:
         document.save(update_fields=["status"])
 
         try:
-            pdf_bytes = self._read_file(document.file)
+            if pdf_bytes is None:
+                pdf_bytes = self._read_file(document.file)
 
             doc, chunks = extract_and_chunk(
                 pdf_bytes=pdf_bytes,
