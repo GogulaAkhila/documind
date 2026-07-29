@@ -94,11 +94,61 @@ A full-stack Retrieval-Augmented Generation pipeline enabling cross-document Q&A
 
 ### Prerequisites
 
-- Python 3.12+
-- Node.js 22+
+- Python 3.10–3.12 (Docling is unstable on 3.13+)
+- Node.js 18+
 - Docker & Docker Compose (optional, for containerized setup)
 - Supabase account (free tier)
 - API keys: Google AI (Gemini), Jina AI
+
+### Quick Start (Recommended)
+
+Two scripts handle everything — installing dependencies, scaffolding your `.env` files, running migrations, and starting all three services (Daphne, Celery, Vite) each in their own terminal window.
+
+**Step 1 — Clone the repo**
+```bash
+git clone https://github.com/GogulaAkhila/documind.git
+cd documind
+```
+
+**Step 2 — Have your credentials ready**
+
+You'll be prompted for these during install (press Enter to skip and fill in later):
+- `GEMINI_API_KEY` — [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+- `JINA_API_KEY` — [jina.ai/reranker](https://jina.ai/reranker)
+- A Supabase project ([supabase.com](https://supabase.com)) → `DATABASE_URL` / `SUPABASE_DB_URL` (Project Settings → Database → Connection string), `SUPABASE_URL` and `SUPABASE_KEY` (Project Settings → API)
+- A Redis instance ([upstash.com](https://upstash.com) free tier, or local `redis://localhost:6379/0`) → `REDIS_URL`
+
+**Step 3 — Install dependencies**
+
+macOS / Linux:
+```bash
+./install.sh
+```
+Windows (PowerShell):
+```powershell
+.\install.ps1
+```
+This creates `backend/venv`, installs Python + npm dependencies, generates `backend/.env` and `frontend/.env` (prompting for the credentials above on first run only), and runs Django migrations. It's idempotent — safe to re-run any time (e.g. after pulling new dependencies), and it never overwrites an existing `.env`.
+
+**Step 4 — Start all services**
+
+macOS / Linux:
+```bash
+./run.sh
+```
+Windows (PowerShell):
+```powershell
+.\run.ps1
+```
+This opens three windows — one each for the backend (Daphne), Celery worker, and frontend (Vite) — with full native, color output in each. Close a window (or `Ctrl+C` inside it) to stop that service.
+
+**Step 5 — Open the app**
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000/api/v1/
+
+Create a collection, upload a PDF, wait for it to finish processing, then start asking questions.
+
+> `run.sh`/`run.ps1` will refuse to start if `backend/venv`, `frontend/node_modules`, or `backend/.env` are missing — run the installer first (Step 3).
 
 ### Quick Start with Docker
 
@@ -115,6 +165,8 @@ docker compose up --build
 - Backend API: http://localhost:8000/api/v1/
 
 ### Manual Setup
+
+If you'd rather run each step yourself instead of using the scripts above:
 
 #### 1. Supabase
 
@@ -226,6 +278,8 @@ documind/
 │       ├── providers/         # Query and theme providers
 │       └── types/             # TypeScript interfaces
 ├── docker-compose.yml         # Full stack: backend + celery + redis + frontend
+├── install.sh / install.ps1   # Set up venv, deps, and .env files (macOS/Linux, Windows)
+├── run.sh / run.ps1            # Start backend + Celery + frontend, each in its own terminal
 └── README.md
 ```
 
