@@ -1,4 +1,4 @@
-# DocuMind — Production-Grade RAG System for Document Intelligence
+# DocuMind : Production-Grade RAG System for Document Intelligence
 
 A full-stack Retrieval-Augmented Generation pipeline enabling cross-document Q&A over any PDF documents with inline citations, hybrid retrieval, and evaluation metrics.
 
