@@ -125,28 +125,35 @@ class HybridRetriever:
         dense_results: list[RetrievedChunk],
         sparse_results: list[RetrievedChunk],
     ) -> list[RetrievedChunk]:
-        scores: dict[str, float] = {}
+        """Fuse dense + sparse result lists using RRF for ordering only.
+
+        RRF scores (~1/rrf_k, e.g. ~0.016 for rrf_k=60) are on a completely
+        different scale than cosine similarity or reranker relevance scores.
+        Previously this method overwrote `chunk.score` with the RRF value,
+        which meant confidence gating downstream (score_retrieval_confidence)
+        could see near-zero scores for chunks that were actually excellent
+        matches — causing systematic false abstention whenever a query had
+        too few candidates to trigger reranking. RRF is used here purely to
+        determine fusion *order*; each chunk keeps its original, meaningful
+        score (dense cosine similarity, or sparse ts_rank) so downstream
+        confidence scoring stays on a consistent, interpretable scale.
+        """
+        rrf_scores: dict[str, float] = {}
         chunk_map: dict[str, RetrievedChunk] = {}
 
         rrf_k = settings.RAG_RRF_K
 
         for rank, chunk in enumerate(dense_results):
             rrf_score = 1.0 / (rrf_k + rank + 1)
-            scores[chunk.chunk_id] = scores.get(chunk.chunk_id, 0.0) + rrf_score
+            rrf_scores[chunk.chunk_id] = rrf_scores.get(chunk.chunk_id, 0.0) + rrf_score
             chunk_map[chunk.chunk_id] = chunk
 
         for rank, chunk in enumerate(sparse_results):
             rrf_score = 1.0 / (rrf_k + rank + 1)
-            scores[chunk.chunk_id] = scores.get(chunk.chunk_id, 0.0) + rrf_score
+            rrf_scores[chunk.chunk_id] = rrf_scores.get(chunk.chunk_id, 0.0) + rrf_score
             if chunk.chunk_id not in chunk_map:
                 chunk_map[chunk.chunk_id] = chunk
 
-        sorted_ids = sorted(scores.keys(), key=lambda cid: scores[cid], reverse=True)
+        sorted_ids = sorted(rrf_scores.keys(), key=lambda cid: rrf_scores[cid], reverse=True)
 
-        fused_results: list[RetrievedChunk] = []
-        for chunk_id in sorted_ids:
-            chunk = chunk_map[chunk_id]
-            chunk.score = scores[chunk_id]
-            fused_results.append(chunk)
-
-        return fused_results
+        return [chunk_map[chunk_id] for chunk_id in sorted_ids]
