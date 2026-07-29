@@ -57,6 +57,35 @@ BEGIN
 END $$;
 """
 
+# `content_tsv` is a GENERATED STORED column, so adding `content_for_embedding`
+# above does NOT retroactively change what content_tsv is computed from on
+# tables created before that column existed — it keeps indexing the old
+# expression (`to_tsvector('english', content)`) forever, silently starving
+# full-text search of the richer, contextualized text (and of any content
+# that lives only in headings/titles prepended to content_for_embedding).
+# This repairs it by dropping + recreating the column (and its GIN index)
+# whenever its stored generation expression is stale, which also makes
+# Postgres backfill content_tsv for every existing row automatically.
+REPAIR_TSV_SQL = """
+DO $$
+DECLARE
+    tsv_expr TEXT;
+BEGIN
+    SELECT generation_expression INTO tsv_expr
+    FROM information_schema.columns
+    WHERE table_name = 'document_embeddings' AND column_name = 'content_tsv';
+
+    IF tsv_expr IS NOT NULL AND tsv_expr NOT LIKE '%content_for_embedding%' THEN
+        DROP INDEX IF EXISTS idx_embeddings_tsv;
+        ALTER TABLE document_embeddings DROP COLUMN content_tsv;
+        ALTER TABLE document_embeddings ADD COLUMN content_tsv tsvector GENERATED ALWAYS AS (
+            to_tsvector('english', coalesce(content_for_embedding, content))
+        ) STORED;
+        CREATE INDEX idx_embeddings_tsv ON document_embeddings USING gin(content_tsv);
+    END IF;
+END $$;
+"""
+
 
 class VectorStoreError(Exception):
     """Raised when vector store operations fail."""
@@ -79,6 +108,7 @@ class PgVectorStore:
                 cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
                 cur.execute(CREATE_TABLE_SQL)
                 cur.execute(MIGRATE_TABLE_SQL)
+                cur.execute(REPAIR_TSV_SQL)
             conn.commit()
             logger.info("Vector store initialized")
         except psycopg2.Error as e:
@@ -188,11 +218,25 @@ class PgVectorStore:
         collection_id: str,
         top_k: int = 20,
     ) -> list[dict[str, Any]]:
+        # Underscore-joined tokens (e.g. filename-derived names like
+        # "AKSHITA_JAIN") get lexed as a single unstemmed word by Postgres's
+        # english tsvector config and won't match "akshita" + "jain" stored
+        # as separate lexemes in the document text. Splitting on underscores
+        # lets plainto_tsquery match each word independently.
+        normalized_query = query.replace("_", " ")
+
         conn = self._get_connection()
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute(
                     """
+                    -- plainto_tsquery ANDs every term together, so any natural-
+                    -- language question containing even one word absent from a
+                    -- chunk (e.g. "what did X study" when the chunk never says
+                    -- "study") guarantees zero matches. OR-ing the same stemmed
+                    -- terms turns this into a proper keyword-recall signal that
+                    -- actually complements dense search instead of almost
+                    -- always returning nothing.
                     SELECT
                         id::text,
                         content,
@@ -200,14 +244,17 @@ class PgVectorStore:
                         page_number,
                         document_title,
                         metadata,
-                        ts_rank_cd(content_tsv, plainto_tsquery('english', %s)) AS score
+                        ts_rank_cd(
+                            content_tsv,
+                            to_tsquery('english', replace(plainto_tsquery('english', %s)::text, ' & ', ' | '))
+                        ) AS score
                     FROM document_embeddings
                     WHERE collection_id = %s::uuid
-                      AND content_tsv @@ plainto_tsquery('english', %s)
+                      AND content_tsv @@ to_tsquery('english', replace(plainto_tsquery('english', %s)::text, ' & ', ' | '))
                     ORDER BY score DESC
                     LIMIT %s
                     """,
-                    (query, collection_id, query, top_k),
+                    (normalized_query, collection_id, normalized_query, top_k),
                 )
                 rows = cur.fetchall()
                 return [dict(row) for row in rows]

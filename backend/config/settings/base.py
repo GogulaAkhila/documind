@@ -164,8 +164,16 @@ RAG_RETRIEVAL_TOP_K = int(os.environ.get("RAG_RETRIEVAL_TOP_K", "20"))
 RAG_RERANK_TOP_K = int(os.environ.get("RAG_RERANK_TOP_K", "5"))
 RAG_RRF_K = int(os.environ.get("RAG_RRF_K", "60"))
 RAG_QUERY_EXPANSION_VARIANTS = int(os.environ.get("RAG_QUERY_EXPANSION_VARIANTS", "3"))
-RAG_CONFIDENCE_HIGH_THRESHOLD = float(os.environ.get("RAG_CONFIDENCE_HIGH_THRESHOLD", "0.5"))
-RAG_CONFIDENCE_LOW_THRESHOLD = float(os.environ.get("RAG_CONFIDENCE_LOW_THRESHOLD", "0.25"))
+# NOTE: confidence gating scores the *post-reranker* chunk list (see
+# core/rag/confidence.py + core/rag/pipeline.py). Jina reranker v2's
+# relevance_score is a cross-encoder score on a much lower scale than raw
+# cosine similarity — genuinely correct top matches commonly score
+# 0.1-0.3, rarely above 0.5. Thresholds tuned for cosine similarity
+# (e.g. 0.5/0.25) cause near-universal false abstention once reranking is
+# active. These defaults are calibrated for the reranker's score scale;
+# re-tune per corpus if you swap reranker models or disable reranking.
+RAG_CONFIDENCE_HIGH_THRESHOLD = float(os.environ.get("RAG_CONFIDENCE_HIGH_THRESHOLD", "0.12"))
+RAG_CONFIDENCE_LOW_THRESHOLD = float(os.environ.get("RAG_CONFIDENCE_LOW_THRESHOLD", "0.04"))
 RAG_DEDUP_SIMILARITY_THRESHOLD = float(os.environ.get("RAG_DEDUP_SIMILARITY_THRESHOLD", "0.95"))
 RAG_HYDE_ENABLED = os.environ.get("RAG_HYDE_ENABLED", "true").lower() == "true"
 RAG_HYDE_MIN_QUERY_WORDS = int(os.environ.get("RAG_HYDE_MIN_QUERY_WORDS", "5"))
